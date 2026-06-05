@@ -44,7 +44,9 @@ nav {
 }
 
 nav a,
-.button {
+.button,
+.back-link,
+.filename {
   color: var(--accent);
   font-weight: 600;
   text-decoration: none;
@@ -143,6 +145,11 @@ button,
   color: var(--accent);
 }
 
+.danger-button {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
 .table-wrap {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -199,6 +206,16 @@ th {
   color: var(--accent-strong);
 }
 
+.state-accepted {
+  background: #dcefea;
+  color: var(--accent-strong);
+}
+
+.state-rejected {
+  background: #f5dddd;
+  color: var(--danger);
+}
+
 .empty {
   color: var(--muted);
   text-align: center;
@@ -229,6 +246,60 @@ label {
   padding: 10px 12px;
 }
 
+.detail-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.detail-header h1 {
+  margin-top: 6px;
+}
+
+.review-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  margin-bottom: 24px;
+}
+
+.review-player {
+  background: #111;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.review-player video {
+  aspect-ratio: 16 / 9;
+  display: block;
+  max-height: 70vh;
+  object-fit: contain;
+  width: 100%;
+}
+
+.review-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.review-actions form,
+.review-actions button,
+.review-actions .button {
+  width: 100%;
+}
+
+.log-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 760px) {
   .topbar,
   .toolbar,
@@ -242,6 +313,11 @@ label {
   }
 
   .tool-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-header,
+  .review-layout {
     grid-template-columns: 1fr;
   }
 }

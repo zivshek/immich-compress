@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="detail-header">
+  <div>
+    <a class="back-link" href="/jobs">Back to jobs</a>
+    <h1>{{ job.original_file_name }}</h1>
+  </div>
+  <span class="state state-{{ job.state }}">{{ job.state }}</span>
+</section>
+
+<section class="summary-grid">
+  <div class="panel">
+    <span class="label">Original</span>
+    <strong>{{ "%.1f"|format(job.original_size / 1048576) if job.original_size else "-" }} MB</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Compressed</span>
+    <strong>{{ "%.1f"|format(job.compressed_size / 1048576) if job.compressed_size else "-" }} MB</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Saved</span>
+    <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) if job.saved_bytes else "-" }} MB</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Updated</span>
+    <strong>{{ job.updated_at }}</strong>
+  </div>
+</section>
+
+{% if job.output_path %}
+<section class="review-layout">
+  <div class="review-player">
+    <video controls preload="metadata" src="/jobs/{{ job.asset_id }}/files/compressed"></video>
+  </div>
+  <aside class="panel review-actions">
+    <a class="button" href="/jobs/{{ job.asset_id }}/files/compressed">Download Compressed</a>
+    {% if job.original_path %}
+    <a class="button secondary" href="/jobs/{{ job.asset_id }}/files/original">Download Original</a>
+    {% endif %}
+    <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.asset_id }}" target="_blank" rel="noreferrer">Open in Immich</a>
+    <form method="post" action="/jobs/{{ job.asset_id }}/accept">
+      <button type="submit">Accept</button>
+    </form>
+    <form method="post" action="/jobs/{{ job.asset_id }}/reject">
+      <button class="danger-button" type="submit">Reject</button>
+    </form>
+  </aside>
+</section>
+{% endif %}
+
+{% if job.error %}
+<section>
+  <h1>Error</h1>
+  <pre class="log-box">{{ job.error }}</pre>
+</section>
+{% endif %}
+
+{% if job.logs %}
+<section>
+  <h1>Encode Log</h1>
+  <pre class="log-box">{{ job.logs }}</pre>
+</section>
+{% endif %}
+{% endblock %}

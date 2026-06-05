@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi import HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -15,6 +18,18 @@ from app.tools import tool_statuses
 app = FastAPI(title="Immich Compress")
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+def safe_job_file(path_value: str | None) -> Path:
+    if not path_value:
+        raise HTTPException(status_code=404, detail="File is not available")
+    path = Path(path_value).resolve()
+    data_dir = effective_settings().data_dir.resolve()
+    if data_dir not in path.parents and path != data_dir:
+        raise HTTPException(status_code=403, detail="File is outside the app data directory")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File does not exist")
+    return path
 
 
 @app.on_event("startup")
@@ -88,3 +103,45 @@ def jobs_page(request: Request):
 def process_asset(asset: str = Form(...)):
     job_queue.enqueue(asset)
     return RedirectResponse("/jobs", status_code=303)
+
+
+@app.get("/jobs/{asset_id}")
+def job_detail(request: Request, asset_id: str):
+    job = db.get_job(asset_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return templates.TemplateResponse(
+        request,
+        "job_detail.html",
+        {"settings": effective_settings(), "job": job},
+    )
+
+
+@app.get("/jobs/{asset_id}/files/{kind}")
+def job_file(asset_id: str, kind: str):
+    job = db.get_job(asset_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if kind == "original":
+        path = safe_job_file(job["original_path"])
+    elif kind == "compressed":
+        path = safe_job_file(job["output_path"])
+    else:
+        raise HTTPException(status_code=404, detail="File kind not found")
+    return FileResponse(path, filename=path.name)
+
+
+@app.post("/jobs/{asset_id}/accept")
+def accept_job(asset_id: str):
+    if not db.get_job(asset_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.update_job(asset_id, state="accepted", error=None)
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
+
+@app.post("/jobs/{asset_id}/reject")
+def reject_job(asset_id: str):
+    if not db.get_job(asset_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.update_job(asset_id, state="rejected")
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)

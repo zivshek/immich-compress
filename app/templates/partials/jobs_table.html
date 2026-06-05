@@ -14,7 +14,7 @@
       {% for job in jobs %}
       <tr>
         <td>
-          <span class="filename">{{ job.original_file_name }}</span>
+          <a class="filename" href="/jobs/{{ job.asset_id }}">{{ job.original_file_name }}</a>
           {% if job.error %}<small class="error">{{ job.error }}</small>{% endif %}
         </td>
         <td><span class="state state-{{ job.state }}">{{ job.state }}</span></td>
@@ -29,4 +29,3 @@
     </tbody>
   </table>
 </div>
-
