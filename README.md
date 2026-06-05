@@ -55,22 +55,28 @@ docker compose up -d immich-compress
 
 You can run Immich Compress from its own folder without editing Immich's compose file. The current review-mode workflow downloads originals through the Immich API, so it only needs an API key and persistent `/data`.
 
-Create an Immich API key, then create a `.env` file next to `docker-compose.standalone.example.yml`:
+Create an Immich API key, then create a `.env` file next to your compose file:
 
 ```bash
 IMMICH_COMPRESS_API_KEY=your-api-key
 ```
 
-Copy the standalone example and set `IMMICH_URL` to a URL reachable from the container:
+For TrueNAS, use the published-image example so the app data stays under `/mnt/Apps/AppData/immich-compress` and you do not need the source repo on the server:
 
 ```bash
-cp docker-compose.standalone.example.yml docker-compose.yml
-docker compose up -d --build
+cp docker-compose.published.example.yml docker-compose.yml
+docker compose up -d
 ```
 
 Open `http://your-truenas-ip:8097`.
 
-If `host.docker.internal` does not resolve on your Docker host, use your Immich LAN URL, for example `http://192.168.1.50:2283`.
+Set `IMMICH_URL` to your Immich LAN URL, for example `http://192.168.1.50:2283`.
+
+If you want to build locally from source instead, use `docker-compose.example.yml` and run:
+
+```bash
+docker compose up -d --build
+```
 
 ## Important settings
 
