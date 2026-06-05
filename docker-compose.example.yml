@@ -6,6 +6,9 @@ services:
     ports:
       - "8097:8097"
     environment:
+      # Use a URL this container can reach. If the container is not attached to
+      # Immich's Docker network, use your LAN URL, for example:
+      # IMMICH_URL: "http://192.168.1.50:2283"
       IMMICH_URL: "http://immich-server:2283"
       IMMICH_API_KEY: "${IMMICH_COMPRESS_API_KEY}"
       IMMICH_UPLOAD_ROOT: "/immich-upload"
