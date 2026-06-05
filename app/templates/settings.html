@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>Settings</h1>
+  {% if message %}<p class="notice">{{ message }}</p>{% endif %}
+  <form method="post" class="settings-form">
+    <label>
+      Immich URL
+      <input value="{{ settings.immich_url }}" disabled>
+    </label>
+    <label>
+      API key
+      <input value="{{ 'Configured' if settings.immich_api_key else 'Missing' }}" disabled>
+    </label>
+    <label>
+      Processed suffix
+      <input name="processed_suffix" value="{{ settings.processed_suffix }}">
+    </label>
+    <label>
+      HandBrake preset
+      <input name="handbrake_preset" value="{{ settings.handbrake_preset }}">
+    </label>
+    <label>
+      HandBrake encoder
+      <input name="handbrake_encoder" value="{{ settings.handbrake_encoder }}">
+    </label>
+    <label>
+      Replacement mode
+      <select name="replacement_mode">
+        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Review output first</option>
+        <option value="upload-trash" {% if settings.replacement_mode == "upload-trash" %}selected{% endif %}>Upload processed and trash original</option>
+        <option value="disabled" {% if settings.replacement_mode == "disabled" %}selected{% endif %}>Compress only</option>
+      </select>
+    </label>
+    <button type="submit">Save Settings</button>
+  </form>
+</section>
+{% endblock %}
+

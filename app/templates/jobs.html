@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="toolbar">
+  <form method="post" action="/jobs/process-asset" class="inline-form">
+    <input name="asset" placeholder="Paste Immich asset ID or URL" required>
+    <button type="submit">Process Asset</button>
+  </form>
+</section>
+<section>
+  <h1>Jobs</h1>
+  {% include "partials/jobs_table.html" %}
+</section>
+{% endblock %}
+

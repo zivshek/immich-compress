@@ -1,0 +1,24 @@
+[project]
+name = "immich-compress"
+version = "0.1.0"
+description = "A sidecar app for compressing Immich videos with HandBrakeCLI."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111.0",
+  "jinja2>=3.1.4",
+  "python-multipart>=0.0.9",
+  "requests>=2.32.0",
+  "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+immich-compress-import-manual = "app.manual_import:main"
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.5.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

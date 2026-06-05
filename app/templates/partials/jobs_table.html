@@ -1,0 +1,32 @@
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>State</th>
+        <th>Original</th>
+        <th>Compressed</th>
+        <th>Saved</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td>
+          <span class="filename">{{ job.original_file_name }}</span>
+          {% if job.error %}<small class="error">{{ job.error }}</small>{% endif %}
+        </td>
+        <td><span class="state state-{{ job.state }}">{{ job.state }}</span></td>
+        <td>{{ "%.1f"|format(job.original_size / 1048576) if job.original_size else "-" }} MB</td>
+        <td>{{ "%.1f"|format(job.compressed_size / 1048576) if job.compressed_size else "-" }} MB</td>
+        <td>{{ "%.1f"|format(job.saved_bytes / 1048576) if job.saved_bytes else "-" }} MB</td>
+        <td>{{ job.updated_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">No jobs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+

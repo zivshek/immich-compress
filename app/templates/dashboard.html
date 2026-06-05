@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="summary-grid">
+  <div class="panel">
+    <span class="label">Immich</span>
+    <strong>{{ "Connected" if immich_connected else "Not connected" }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Mode</span>
+    <strong>{{ settings.replacement_mode }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Suffix</span>
+    <strong>{{ settings.processed_suffix }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Dry Run</span>
+    <strong>{{ "On" if settings.dry_run else "Off" }}</strong>
+  </div>
+</section>
+
+<section class="tool-grid">
+  {% for tool in tools %}
+  <div class="panel tool-panel">
+    <span class="label">{{ tool.name }}</span>
+    <strong>{{ "Available" if tool.available else "Missing" }}</strong>
+    <small>{{ tool.version }}</small>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="toolbar">
+  <form method="post" action="/jobs/process-asset" class="inline-form">
+    <input name="asset" placeholder="Paste Immich asset ID or URL" required>
+    <button type="submit">Process Asset</button>
+  </form>
+  <a class="button secondary" href="/jobs">View Jobs</a>
+</section>
+
+<section>
+  <h1>Recent Jobs</h1>
+  {% include "partials/jobs_table.html" %}
+</section>
+{% endblock %}

@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterator
+
+from app.config import settings
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_db() -> None:
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    with connect() as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+              key TEXT PRIMARY KEY,
+              value TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS compression_jobs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              asset_id TEXT NOT NULL,
+              original_file_name TEXT NOT NULL,
+              original_path TEXT,
+              output_path TEXT,
+              state TEXT NOT NULL,
+              original_size INTEGER,
+              compressed_size INTEGER,
+              saved_bytes INTEGER,
+              error TEXT,
+              logs TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_asset_id ON compression_jobs(asset_id)"
+        )
+
+
+@contextmanager
+def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
+    db = sqlite3.connect(path or settings.database_path)
+    db.row_factory = sqlite3.Row
+    try:
+        yield db
+        db.commit()
+    finally:
+        db.close()
+
+
+def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
+    with connect() as db:
+        return list(
+            db.execute(
+                """
+                SELECT * FROM compression_jobs
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        )
+
+
+def get_job(asset_id: str) -> sqlite3.Row | None:
+    with connect() as db:
+        return db.execute("SELECT * FROM compression_jobs WHERE asset_id = ?", (asset_id,)).fetchone()
+
+
+def upsert_job(asset_id: str, original_file_name: str, state: str = "pending") -> None:
+    now = utc_now()
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO compression_jobs(asset_id, original_file_name, state, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+              original_file_name = excluded.original_file_name,
+              state = excluded.state,
+              updated_at = excluded.updated_at
+            """,
+            (asset_id, original_file_name, state, now, now),
+        )
+
+
+def update_job(asset_id: str, **values: object) -> None:
+    if not values:
+        return
+    values["updated_at"] = utc_now()
+    columns = ", ".join(f"{key} = ?" for key in values)
+    params = list(values.values()) + [asset_id]
+    with connect() as db:
+        db.execute(f"UPDATE compression_jobs SET {columns} WHERE asset_id = ?", params)
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with connect() as db:
+        row = db.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO app_settings(key, value, updated_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """,
+            (key, value, utc_now()),
+        )
+

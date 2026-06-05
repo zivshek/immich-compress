@@ -1,0 +1,2 @@
+"""Immich Compress sidecar app."""
+
