@@ -25,6 +25,14 @@
     <span class="label">Updated</span>
     <strong>{{ job.updated_at }}</strong>
   </div>
+  <div class="panel">
+    <span class="label">Original Asset ID</span>
+    <strong class="breakable">{{ job.asset_id }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Copied Asset ID</span>
+    <strong class="breakable">{{ job.target_asset_id or "-" }}</strong>
+  </div>
 </section>
 
 {% if job.output_path %}
@@ -38,11 +46,14 @@
     <a class="button secondary" href="/jobs/{{ job.asset_id }}/files/original">Download Original</a>
     {% endif %}
     <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.asset_id }}" target="_blank" rel="noreferrer">Open in Immich</a>
+    {% if job.target_asset_id %}
+    <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.target_asset_id }}" target="_blank" rel="noreferrer">Open Copied Asset</a>
+    {% endif %}
     {% if settings.dry_run %}
-    <p class="notice compact">Dry run is on. Accept will not replace the Immich original.</p>
+    <p class="notice compact">Dry run is on. Accept will not upload a copied asset.</p>
     {% endif %}
     <form method="post" action="/jobs/{{ job.asset_id }}/accept">
-      <button type="submit">{{ "Accept Dry Run" if settings.dry_run else "Accept and Replace" }}</button>
+      <button type="submit">{{ "Accept Dry Run" if settings.dry_run else "Accept and Copy" }}</button>
     </form>
     <form method="post" action="/jobs/{{ job.asset_id }}/reject">
       <button class="danger-button" type="submit">Reject</button>

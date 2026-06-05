@@ -30,6 +30,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS compression_jobs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               asset_id TEXT NOT NULL,
+              target_asset_id TEXT,
               original_file_name TEXT NOT NULL,
               original_path TEXT,
               output_path TEXT,
@@ -47,6 +48,13 @@ def init_db() -> None:
         db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_asset_id ON compression_jobs(asset_id)"
         )
+        ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
+
+
+def ensure_column(db: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 @contextmanager
@@ -72,6 +80,31 @@ def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
                 (limit,),
             )
         )
+
+
+def get_dashboard_stats() -> sqlite3.Row:
+    with connect() as db:
+        return db.execute(
+            """
+            SELECT
+              COUNT(*) AS total_jobs,
+              SUM(CASE WHEN state IN ('copied', 'copied-and-trashed', 'replaced') THEN 1 ELSE 0 END)
+                AS converted_jobs,
+              SUM(CASE WHEN state = 'review' THEN 1 ELSE 0 END) AS review_jobs,
+              SUM(CASE WHEN state IN ('failed', 'copy-failed', 'replace-failed') THEN 1 ELSE 0 END)
+                AS failed_jobs,
+              COALESCE(SUM(CASE
+                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                THEN original_size ELSE 0 END), 0) AS converted_original_bytes,
+              COALESCE(SUM(CASE
+                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                THEN compressed_size ELSE 0 END), 0) AS converted_compressed_bytes,
+              COALESCE(SUM(CASE
+                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                THEN saved_bytes ELSE 0 END), 0) AS converted_saved_bytes
+            FROM compression_jobs
+            """
+        ).fetchone()
 
 
 def get_job(asset_id: str) -> sqlite3.Row | None:
@@ -121,4 +154,3 @@ def set_setting(key: str, value: str) -> None:
             """,
             (key, value, utc_now()),
         )
-

@@ -13,6 +13,22 @@
     <span class="label">Dry Run</span>
     <strong>{{ "On" if settings.dry_run else "Off" }}</strong>
   </div>
+  <div class="panel">
+    <span class="label">Converted</span>
+    <strong>{{ stats.converted_jobs or 0 }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Compression Saved</span>
+    <strong>{{ "%.2f"|format((stats.converted_saved_bytes or 0) / 1073741824) }} GB</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Awaiting Review</span>
+    <strong>{{ stats.review_jobs or 0 }}</strong>
+  </div>
+  <div class="panel">
+    <span class="label">Failed</span>
+    <strong>{{ stats.failed_jobs or 0 }}</strong>
+  </div>
 </section>
 
 <section class="tool-grid">

@@ -49,6 +49,7 @@ def dashboard(request: Request):
         {
             "settings": current_settings,
             "jobs": jobs,
+            "stats": db.get_dashboard_stats(),
             "immich_connected": client.ping() if current_settings.immich_api_key else False,
             "tools": tool_statuses(current_settings),
         },
@@ -137,27 +138,50 @@ def accept_job(asset_id: str):
     output_path = safe_job_file(job["output_path"])
     current_settings = effective_settings()
 
+    if current_settings.replacement_mode == "disabled":
+        db.update_job(
+            asset_id,
+            state="accepted",
+            error=None,
+            logs=(job["logs"] or "") + "\nAccepted: compressed output kept locally; upload is disabled.",
+        )
+        return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
     if current_settings.dry_run:
         db.update_job(
             asset_id,
-            state="accepted-dry-run",
+            state="copy-dry-run",
             error=None,
-            logs=(job["logs"] or "") + "\nDry run: would replace Immich original with reviewed file.",
+            logs=(job["logs"] or "") + "\nDry run: would upload a compressed copy and copy Immich metadata.",
         )
         return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
     try:
         client = ImmichClient(current_settings)
         asset = client.find_asset_by_id(asset_id)
-        client.replace_original(asset, output_path)
+        uploaded = client.upload_asset_copy(asset, output_path)
+        target_asset_id = uploaded["id"]
+        db.update_job(asset_id, target_asset_id=target_asset_id, state="copying")
+        client.copy_asset_metadata(asset_id, target_asset_id)
+        if current_settings.replacement_mode == "upload-trash":
+            client.trash_asset(asset_id)
+            state = "copied-and-trashed"
+            log_line = (
+                f"\nAccepted: uploaded compressed asset {target_asset_id}, copied Immich metadata, "
+                "and trashed the original asset."
+            )
+        else:
+            state = "copied"
+            log_line = f"\nAccepted: uploaded compressed asset {target_asset_id} and copied Immich metadata."
         db.update_job(
             asset_id,
-            state="replaced",
+            target_asset_id=target_asset_id,
+            state=state,
             error=None,
-            logs=(job["logs"] or "") + "\nAccepted: replaced Immich original through the API.",
+            logs=(job["logs"] or "") + log_line,
         )
     except Exception as exc:
-        db.update_job(asset_id, state="replace-failed", error=str(exc))
+        db.update_job(asset_id, state="copy-failed", error=str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

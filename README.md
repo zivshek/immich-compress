@@ -16,7 +16,7 @@ This repo is an early scaffold. It can:
 - copy metadata with ExifTool
 - leave the compressed output in review state
 
-Replacement/upload behavior from `upload_processed_to_immich.py` is not fully automated yet. The first implementation keeps replacement in review mode to avoid destructive surprises.
+Accepted videos are uploaded as new Immich assets, then Immich-side details are copied from the original asset with `copyAsset`. The original asset id and copied asset id are both tracked in this app.
 
 ## Development
 
@@ -141,17 +141,22 @@ HANDBRAKE_ENCODER: "x265"
 
 This will be slower, but it confirms the rest of the workflow is healthy.
 
-## Replacing originals
+## Accepting reviewed files
 
-The app does not replace the downloaded working copy under `/data/work/<asset-id>/`. That file is only a temporary local copy used for encoding and review.
+The app does not modify the downloaded working copy under `/data/work/<asset-id>/`. That file is only a temporary local copy used for encoding and review.
 
-After review, clicking Accept uploads the compressed file back to Immich with the same asset id and original filename using Immich's replace-original API:
+After review, clicking Accept uploads the compressed file to Immich as a new asset, then copies Immich-side information from the original asset to the new asset with the stable v2 copy endpoint:
 
 ```text
-PUT /api/assets/<asset-id>/original
+POST /api/assets
+PUT /api/assets/copy
 ```
 
-Immich currently marks this endpoint as deprecated, but it is still the API path that preserves the existing asset id. Keep `DRY_RUN=true` until you have reviewed the behavior on test assets. With dry run enabled, Accept records what would happen without uploading the replacement.
+The original asset id remains cached in this app as `asset_id`, and the new uploaded asset id is stored as `target_asset_id`.
+
+`copyAsset` copies Immich-side data such as albums, favorites, shared links, sidecars, and stacks. ExifTool is still used before upload so metadata embedded inside the MP4 migrates with the actual file.
+
+Keep `DRY_RUN=true` until you have reviewed the behavior on test assets. With dry run enabled, Accept records what would happen without uploading the copied asset.
 
 ## Importing already-compressed files
 

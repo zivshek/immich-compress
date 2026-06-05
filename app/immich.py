@@ -55,28 +55,43 @@ class ImmichClient:
                         file.write(chunk)
         return destination
 
-    def replace_original(self, asset: dict[str, Any], replacement_path: Path) -> Any:
+    def upload_asset_copy(self, source_asset: dict[str, Any], replacement_path: Path) -> dict[str, Any]:
         data = {
-            "deviceAssetId": asset.get("deviceAssetId") or asset["id"],
-            "deviceId": asset.get("deviceId") or "immich-compress",
-            "fileCreatedAt": asset["fileCreatedAt"],
-            "fileModifiedAt": asset["fileModifiedAt"],
-            "filename": asset.get("originalFileName") or replacement_path.name,
+            "deviceAssetId": f"immich-compress-{source_asset['id']}",
+            "deviceId": "immich-compress",
+            "fileCreatedAt": source_asset["fileCreatedAt"],
+            "fileModifiedAt": source_asset["fileModifiedAt"],
+            "filename": source_asset.get("originalFileName") or replacement_path.name,
         }
-        if asset.get("duration"):
-            data["duration"] = asset["duration"]
+        if source_asset.get("duration"):
+            data["duration"] = source_asset["duration"]
 
         with replacement_path.open("rb") as file:
-            response = self.session.put(
-                self.api_url(f"assets/{asset['id']}/original"),
+            response = self.session.post(
+                self.api_url("assets"),
                 data=data,
                 files={"assetData": (data["filename"], file, "video/mp4")},
                 timeout=600,
             )
         response.raise_for_status()
         if not response.content:
-            return None
+            raise RuntimeError("Immich upload returned an empty response")
         return response.json()
+
+    def copy_asset_metadata(self, source_id: str, target_id: str) -> None:
+        self.request(
+            "PUT",
+            "assets/copy",
+            json={
+                "sourceId": source_id,
+                "targetId": target_id,
+                "albums": True,
+                "favorite": True,
+                "sharedLinks": True,
+                "sidecar": True,
+                "stack": True,
+            },
+        )
 
     def list_albums(self) -> list[dict[str, Any]]:
         return self.request("GET", "albums") or []

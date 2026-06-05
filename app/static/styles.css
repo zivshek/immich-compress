@@ -221,12 +221,19 @@ th {
   color: var(--accent-strong);
 }
 
-.state-accepted-dry-run {
+.state-copied,
+.state-copied-and-trashed,
+.state-copying {
+  background: #dcefea;
+  color: var(--accent-strong);
+}
+
+.state-copy-dry-run {
   background: #ece7d3;
   color: #6d5a18;
 }
 
-.state-replace-failed {
+.state-copy-failed {
   background: #f5dddd;
   color: var(--danger);
 }
@@ -264,6 +271,10 @@ label {
 .compact {
   font-size: 0.9rem;
   margin: 0;
+}
+
+.breakable {
+  overflow-wrap: anywhere;
 }
 
 .detail-header {

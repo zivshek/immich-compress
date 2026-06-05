@@ -23,8 +23,8 @@
     <label>
       Replacement mode
       <select name="replacement_mode">
-        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Review output first</option>
-        <option value="upload-trash" {% if settings.replacement_mode == "upload-trash" %}selected{% endif %}>Upload processed and trash original</option>
+        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Upload copy after review</option>
+        <option value="upload-trash" {% if settings.replacement_mode == "upload-trash" %}selected{% endif %}>Upload copy and trash original after review</option>
         <option value="disabled" {% if settings.replacement_mode == "disabled" %}selected{% endif %}>Compress only</option>
       </select>
     </label>
