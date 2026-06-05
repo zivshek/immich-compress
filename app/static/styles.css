@@ -216,6 +216,21 @@ th {
   color: var(--danger);
 }
 
+.state-replaced {
+  background: #dcefea;
+  color: var(--accent-strong);
+}
+
+.state-accepted-dry-run {
+  background: #ece7d3;
+  color: #6d5a18;
+}
+
+.state-replace-failed {
+  background: #f5dddd;
+  color: var(--danger);
+}
+
 .empty {
   color: var(--muted);
   text-align: center;
@@ -244,6 +259,11 @@ label {
   color: var(--accent-strong);
   max-width: 720px;
   padding: 10px 12px;
+}
+
+.compact {
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 .detail-header {

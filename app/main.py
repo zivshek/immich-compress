@@ -131,9 +131,33 @@ def job_file(asset_id: str, kind: str):
 
 @app.post("/jobs/{asset_id}/accept")
 def accept_job(asset_id: str):
-    if not db.get_job(asset_id):
+    job = db.get_job(asset_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    db.update_job(asset_id, state="accepted", error=None)
+    output_path = safe_job_file(job["output_path"])
+    current_settings = effective_settings()
+
+    if current_settings.dry_run:
+        db.update_job(
+            asset_id,
+            state="accepted-dry-run",
+            error=None,
+            logs=(job["logs"] or "") + "\nDry run: would replace Immich original with reviewed file.",
+        )
+        return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
+    try:
+        client = ImmichClient(current_settings)
+        asset = client.find_asset_by_id(asset_id)
+        client.replace_original(asset, output_path)
+        db.update_job(
+            asset_id,
+            state="replaced",
+            error=None,
+            logs=(job["logs"] or "") + "\nAccepted: replaced Immich original through the API.",
+        )
+    except Exception as exc:
+        db.update_job(asset_id, state="replace-failed", error=str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

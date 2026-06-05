@@ -141,6 +141,18 @@ HANDBRAKE_ENCODER: "x265"
 
 This will be slower, but it confirms the rest of the workflow is healthy.
 
+## Replacing originals
+
+The app does not replace the downloaded working copy under `/data/work/<asset-id>/`. That file is only a temporary local copy used for encoding and review.
+
+After review, clicking Accept uploads the compressed file back to Immich with the same asset id and original filename using Immich's replace-original API:
+
+```text
+PUT /api/assets/<asset-id>/original
+```
+
+Immich currently marks this endpoint as deprecated, but it is still the API path that preserves the existing asset id. Keep `DRY_RUN=true` until you have reviewed the behavior on test assets. With dry run enabled, Accept records what would happen without uploading the replacement.
+
 ## Importing already-compressed files
 
 For videos you already compressed manually, use the manual import utility. It looks for files whose stem ends in the legacy suffix, such as `20250503_210902-hbed.mp4`, searches Immich for the original asset stem, records that asset as `processed` in the sidecar database, and can rename the local file back to `20250503_210902.mp4`.

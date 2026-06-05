@@ -55,6 +55,29 @@ class ImmichClient:
                         file.write(chunk)
         return destination
 
+    def replace_original(self, asset: dict[str, Any], replacement_path: Path) -> Any:
+        data = {
+            "deviceAssetId": asset.get("deviceAssetId") or asset["id"],
+            "deviceId": asset.get("deviceId") or "immich-compress",
+            "fileCreatedAt": asset["fileCreatedAt"],
+            "fileModifiedAt": asset["fileModifiedAt"],
+            "filename": asset.get("originalFileName") or replacement_path.name,
+        }
+        if asset.get("duration"):
+            data["duration"] = asset["duration"]
+
+        with replacement_path.open("rb") as file:
+            response = self.session.put(
+                self.api_url(f"assets/{asset['id']}/original"),
+                data=data,
+                files={"assetData": (data["filename"], file, "video/mp4")},
+                timeout=600,
+            )
+        response.raise_for_status()
+        if not response.content:
+            return None
+        return response.json()
+
     def list_albums(self) -> list[dict[str, Any]]:
         return self.request("GET", "albums") or []
 
