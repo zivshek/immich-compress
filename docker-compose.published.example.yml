@@ -17,3 +17,11 @@ services:
       REPLACEMENT_MODE: "review"
     volumes:
       - /mnt/Apps/AppData/immich-compress:/data
+
+    # NVIDIA NVENC: requires NVIDIA drivers and NVIDIA Container Toolkit on the host.
+    # Uncomment this for Compose deployments that support the `gpus` key.
+    # gpus: all
+
+    # Intel QSV / VAAPI: uncomment and set HANDBRAKE_ENCODER to qsv_h265 or vaapi_h265.
+    # devices:
+    #   - /dev/dri:/dev/dri

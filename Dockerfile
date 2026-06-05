@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DATA_DIR=/data
+    DATA_DIR=/data \
+    NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

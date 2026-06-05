@@ -90,6 +90,58 @@ docker compose up -d --build
 - `DRY_RUN`: default `true`
 - `REPLACEMENT_MODE`: default `review`
 
+## GPU encoding
+
+The app ships with HandBrakeCLI, but hardware encoding still needs the host GPU passed into the container.
+
+### NVIDIA NVENC
+
+The default encoder is `nvenc_h265`, matching the original script. For this to work, the Docker host must have:
+
+- NVIDIA driver installed
+- NVIDIA Container Toolkit installed/configured
+- GPU access enabled for this container
+
+For Docker Compose deployments that support it, add:
+
+```yaml
+services:
+  immich-compress:
+    gpus: all
+    environment:
+      HANDBRAKE_ENCODER: "nvenc_h265"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
+```
+
+If the logs show `Cannot load libnvidia-encode.so.1` or `Cannot load libcuda.so.1`, the container does not have GPU access yet.
+
+On TrueNAS Scale, enable GPU passthrough/allocation for the Immich Compress app/container in the app settings. If using a custom Compose app, uncomment `gpus: all` in `docker-compose.published.example.yml` if your TrueNAS Docker setup supports it. Otherwise use the TrueNAS UI GPU allocation controls.
+
+### Intel Quick Sync / VAAPI
+
+For Intel hardware encoding, pass `/dev/dri` into the container and change the encoder:
+
+```yaml
+services:
+  immich-compress:
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      HANDBRAKE_ENCODER: "qsv_h265"
+```
+
+If QSV is not available, try `vaapi_h265` if your HandBrake build and host GPU support it.
+
+### CPU fallback
+
+For testing without GPU passthrough, set:
+
+```yaml
+HANDBRAKE_ENCODER: "x265"
+```
+
+This will be slower, but it confirms the rest of the workflow is healthy.
+
 ## Importing already-compressed files
 
 For videos you already compressed manually, use the manual import utility. It looks for files whose stem ends in the configured suffix, such as `20250503_210902-hbed.mp4`, searches Immich for the original asset stem, records that asset as `processed` in the sidecar database, and can rename the local file back to `20250503_210902.mp4`.
