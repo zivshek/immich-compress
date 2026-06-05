@@ -71,12 +71,10 @@ def settings_page(request: Request):
 @app.post("/settings")
 def save_settings(
     request: Request,
-    processed_suffix: str = Form(...),
     handbrake_preset: str = Form(...),
     handbrake_encoder: str = Form(...),
     replacement_mode: str = Form(...),
 ):
-    db.set_setting("processed_suffix", processed_suffix)
     db.set_setting("handbrake_preset", handbrake_preset)
     db.set_setting("handbrake_encoder", handbrake_encoder)
     db.set_setting("replacement_mode", replacement_mode)

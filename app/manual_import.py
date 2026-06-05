@@ -10,6 +10,9 @@ from app.config import effective_settings
 from app.immich import ImmichClient
 
 
+LEGACY_PROCESSED_SUFFIX = "-hbed"
+
+
 @dataclass(frozen=True)
 class ImportCandidate:
     processed_path: Path
@@ -101,13 +104,13 @@ def main() -> None:
     )
     parser.add_argument("folder", type=Path, help="Folder containing processed videos")
     parser.add_argument("--recursive", action="store_true", help="Scan subfolders")
-    parser.add_argument("--suffix", help="Processed suffix to remove, defaults to configured suffix")
+    parser.add_argument("--suffix", help="Processed suffix to remove, defaults to -hbed")
     parser.add_argument("--rename", action="store_true", help="Rename files by removing the processed suffix")
     parser.add_argument("--apply", action="store_true", help="Write database rows and perform renames")
     args = parser.parse_args()
 
     config = effective_settings()
-    suffix = args.suffix or config.processed_suffix
+    suffix = args.suffix or LEGACY_PROCESSED_SUFFIX
     db.init_db()
     client = ImmichClient(config)
 

@@ -30,7 +30,6 @@ class Settings:
     ffmpeg: str = os.environ.get("FFMPEG", "ffmpeg")
     ffprobe: str = os.environ.get("FFPROBE", "ffprobe")
     exiftool: str = os.environ.get("EXIFTOOL", "exiftool")
-    processed_suffix: str = os.environ.get("PROCESSED_SUFFIX", "-hbed")
     handbrake_preset: str = os.environ.get("HANDBRAKE_PRESET", "Fast 2160p60 4K HEVC")
     handbrake_encoder: str = os.environ.get("HANDBRAKE_ENCODER", "nvenc_h265")
     poll_interval_seconds: int = env_int("POLL_INTERVAL_SECONDS", 300)
@@ -55,7 +54,6 @@ def effective_settings() -> Settings:
 
     return replace(
         settings,
-        processed_suffix=db.get_setting("processed_suffix", settings.processed_suffix),
         handbrake_preset=db.get_setting("handbrake_preset", settings.handbrake_preset),
         handbrake_encoder=db.get_setting("handbrake_encoder", settings.handbrake_encoder),
         replacement_mode=db.get_setting("replacement_mode", settings.replacement_mode),

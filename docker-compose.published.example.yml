@@ -10,7 +10,6 @@ services:
       # IMMICH_URL: "http://192.168.1.50:2283"
       IMMICH_URL: "http://YOUR-IMMICH-IP:2283"
       IMMICH_API_KEY: "${IMMICH_COMPRESS_API_KEY}"
-      PROCESSED_SUFFIX: "-hbed"
       HANDBRAKE_PRESET: "Fast 2160p60 4K HEVC"
       HANDBRAKE_ENCODER: "nvenc_h265"
       DRY_RUN: "true"

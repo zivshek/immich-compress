@@ -10,6 +10,9 @@ from pathlib import Path
 from app.config import Settings, settings
 
 
+TEMP_OUTPUT_SUFFIX = "-compressed"
+
+
 SUPPORTED_VIDEO_EXTENSIONS = {
     ".3gp",
     ".avi",
@@ -48,14 +51,10 @@ def is_supported_video(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
 
 
-def processed_name(original_name: str, suffix: str | None = None) -> str:
-    suffix = suffix or settings.processed_suffix
-    return f"{Path(original_name).stem}{suffix}.mp4"
-
-
-def get_output_path(input_path: Path, output_dir: Path | None = None, suffix: str | None = None) -> Path:
-    output_name = processed_name(input_path.name, suffix)
-    return (output_dir or input_path.parent) / output_name
+def get_output_path(input_path: Path, output_dir: Path | None = None) -> Path:
+    if output_dir:
+        return output_dir / input_path.name
+    return input_path.with_name(f"{input_path.stem}{TEMP_OUTPUT_SUFFIX}{input_path.suffix}")
 
 
 def probe_video(path: Path, config: Settings = settings) -> VideoInfo:
@@ -155,7 +154,8 @@ def compress_with_handbrake(
     if not is_supported_video(input_path):
         raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
 
-    output_path = get_output_path(input_path, output_dir, config.processed_suffix)
+    output_path = get_output_path(input_path, output_dir)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path == input_path:
         raise RuntimeError("Output path is the same as input path")
     if output_path.exists():
@@ -250,4 +250,3 @@ def copy_metadata(original_path: Path, compressed_path: Path, config: Settings =
 
     if result.returncode != 0:
         raise RuntimeError(f"ExifTool failed with exit code {result.returncode}: {result.stderr}")
-

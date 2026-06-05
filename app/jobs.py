@@ -62,9 +62,10 @@ def process_asset(asset_id: str) -> None:
 
     work_dir = config.data_dir / "work" / asset_id
     input_path = work_dir / original_name
+    output_dir = work_dir / "compressed"
     try:
         client.download_original(asset_id, input_path)
-        result = compress_with_handbrake(input_path, work_dir, config)
+        result = compress_with_handbrake(input_path, output_dir, config)
         db.update_job(
             asset_id,
             state="review",

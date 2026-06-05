@@ -82,7 +82,6 @@ docker compose up -d --build
 
 - `IMMICH_URL`: Immich server URL from inside Docker, usually `http://immich-server:2283`
 - `IMMICH_API_KEY`: API key created in Immich
-- `PROCESSED_SUFFIX`: default `-hbed`
 - `HANDBRAKE_PRESET`: default `Fast 2160p60 4K HEVC`
 - `HANDBRAKE_ENCODER`: default `nvenc_h265`
 - `HANDBRAKE_CLI`: default `HandBrakeCLI`, already available in the Docker image
@@ -144,7 +143,7 @@ This will be slower, but it confirms the rest of the workflow is healthy.
 
 ## Importing already-compressed files
 
-For videos you already compressed manually, use the manual import utility. It looks for files whose stem ends in the configured suffix, such as `20250503_210902-hbed.mp4`, searches Immich for the original asset stem, records that asset as `processed` in the sidecar database, and can rename the local file back to `20250503_210902.mp4`.
+For videos you already compressed manually, use the manual import utility. It looks for files whose stem ends in the legacy suffix, such as `20250503_210902-hbed.mp4`, searches Immich for the original asset stem, records that asset as `processed` in the sidecar database, and can rename the local file back to `20250503_210902.mp4`.
 
 Start with a dry run:
 
@@ -171,7 +170,7 @@ immich-compress-import-manual "D:\path\to\processed-videos" --suffix "-hbed" --r
 The migrated compression logic preserves the important behavior from `hbed.py`:
 
 - supports the same video extensions
-- writes outputs with the configured processed suffix
+- writes temporary outputs using the original filename in the job work folder
 - keeps the stored pixel matrix dimensions by default
 - optionally bounds upscaled output to 3840x2160
 - neutralizes rotation metadata before HandBrake encoding

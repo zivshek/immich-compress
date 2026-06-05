@@ -13,10 +13,6 @@
       <input value="{{ 'Configured' if settings.immich_api_key else 'Missing' }}" disabled>
     </label>
     <label>
-      Processed suffix
-      <input name="processed_suffix" value="{{ settings.processed_suffix }}">
-    </label>
-    <label>
       HandBrake preset
       <input name="handbrake_preset" value="{{ settings.handbrake_preset }}">
     </label>
@@ -36,4 +32,3 @@
   </form>
 </section>
 {% endblock %}
-
