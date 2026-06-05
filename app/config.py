@@ -20,6 +20,12 @@ def env_int(name: str, default: int) -> int:
     return int(value)
 
 
+def normalize_mode(value: str) -> str:
+    if value == "auto" or value == "upload-trash":
+        return "auto"
+    return "review"
+
+
 @dataclass(frozen=True)
 class Settings:
     immich_url: str = os.environ.get("IMMICH_URL", "http://immich-server:2283")
@@ -36,9 +42,8 @@ class Settings:
     auto_process_new_uploads: bool = env_bool("AUTO_PROCESS_NEW_UPLOADS", False)
     max_concurrent_jobs: int = env_int("MAX_CONCURRENT_JOBS", 1)
     upscale_to_4k: bool = env_bool("UPSCALE_TO_4K", False)
-    dry_run: bool = env_bool("DRY_RUN", True)
     min_savings_percent: int = env_int("MIN_SAVINGS_PERCENT", 5)
-    replacement_mode: str = os.environ.get("REPLACEMENT_MODE", "review")
+    replacement_mode: str = normalize_mode(os.environ.get("REPLACEMENT_MODE", "review"))
 
     @property
     def database_path(self) -> Path:
@@ -56,5 +61,5 @@ def effective_settings() -> Settings:
         settings,
         handbrake_preset=db.get_setting("handbrake_preset", settings.handbrake_preset),
         handbrake_encoder=db.get_setting("handbrake_encoder", settings.handbrake_encoder),
-        replacement_mode=db.get_setting("replacement_mode", settings.replacement_mode),
+        replacement_mode=normalize_mode(db.get_setting("replacement_mode", settings.replacement_mode)),
     )

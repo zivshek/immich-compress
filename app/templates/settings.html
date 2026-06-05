@@ -21,11 +21,10 @@
       <input name="handbrake_encoder" value="{{ settings.handbrake_encoder }}">
     </label>
     <label>
-      Replacement mode
+      Mode
       <select name="replacement_mode">
-        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Upload copy after review</option>
-        <option value="upload-trash" {% if settings.replacement_mode == "upload-trash" %}selected{% endif %}>Upload copy and trash original after review</option>
-        <option value="disabled" {% if settings.replacement_mode == "disabled" %}selected{% endif %}>Compress only</option>
+        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Review</option>
+        <option value="auto" {% if settings.replacement_mode == "auto" %}selected{% endif %}>Auto</option>
       </select>
     </label>
     <button type="submit">Save Settings</button>

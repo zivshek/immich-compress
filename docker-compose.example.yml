@@ -14,7 +14,6 @@ services:
       IMMICH_UPLOAD_ROOT: "/immich-upload"
       HANDBRAKE_PRESET: "Fast 2160p60 4K HEVC"
       HANDBRAKE_ENCODER: "nvenc_h265"
-      DRY_RUN: "true"
       REPLACEMENT_MODE: "review"
     volumes:
       - ./immich-compress-data:/data

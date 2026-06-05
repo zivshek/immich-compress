@@ -9,9 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import db
-from app.config import effective_settings, settings
+from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
-from app.jobs import job_queue
+from app.jobs import job_queue, trash_original_asset, upload_copy
 from app.tools import tool_statuses
 
 
@@ -78,7 +78,7 @@ def save_settings(
 ):
     db.set_setting("handbrake_preset", handbrake_preset)
     db.set_setting("handbrake_encoder", handbrake_encoder)
-    db.set_setting("replacement_mode", replacement_mode)
+    db.set_setting("replacement_mode", normalize_mode(replacement_mode))
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -131,57 +131,27 @@ def job_file(asset_id: str, kind: str):
 
 
 @app.post("/jobs/{asset_id}/accept")
-def accept_job(asset_id: str):
+def upload_job(asset_id: str):
     job = db.get_job(asset_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    output_path = safe_job_file(job["output_path"])
     current_settings = effective_settings()
 
-    if current_settings.replacement_mode == "disabled":
-        db.update_job(
-            asset_id,
-            state="accepted",
-            error=None,
-            logs=(job["logs"] or "") + "\nAccepted: compressed output kept locally; upload is disabled.",
-        )
-        return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
-
-    if current_settings.dry_run:
-        db.update_job(
-            asset_id,
-            state="copy-dry-run",
-            error=None,
-            logs=(job["logs"] or "") + "\nDry run: would upload a compressed copy and copy Immich metadata.",
-        )
-        return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
-
     try:
-        client = ImmichClient(current_settings)
-        asset = client.find_asset_by_id(asset_id)
-        uploaded = client.upload_asset_copy(asset, output_path)
-        target_asset_id = uploaded["id"]
-        db.update_job(asset_id, target_asset_id=target_asset_id, state="copying")
-        client.copy_asset_metadata(asset_id, target_asset_id)
-        if current_settings.replacement_mode == "upload-trash":
-            client.trash_asset(asset_id)
-            state = "copied-and-trashed"
-            log_line = (
-                f"\nAccepted: uploaded compressed asset {target_asset_id}, copied Immich metadata, "
-                "and trashed the original asset."
-            )
-        else:
-            state = "copied"
-            log_line = f"\nAccepted: uploaded compressed asset {target_asset_id} and copied Immich metadata."
-        db.update_job(
-            asset_id,
-            target_asset_id=target_asset_id,
-            state=state,
-            error=None,
-            logs=(job["logs"] or "") + log_line,
-        )
+        upload_copy(asset_id, trash_original=current_settings.replacement_mode == "auto")
     except Exception as exc:
         db.update_job(asset_id, state="copy-failed", error=str(exc))
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
+
+@app.post("/jobs/{asset_id}/trash-original")
+def trash_original_job(asset_id: str):
+    if not db.get_job(asset_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        trash_original_asset(asset_id)
+    except Exception as exc:
+        db.update_job(asset_id, state="trash-failed", error=str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

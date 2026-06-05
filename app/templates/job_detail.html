@@ -49,11 +49,14 @@
     {% if job.target_asset_id %}
     <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.target_asset_id }}" target="_blank" rel="noreferrer">Open Copied Asset</a>
     {% endif %}
-    {% if settings.dry_run %}
-    <p class="notice compact">Dry run is on. Accept will not upload a copied asset.</p>
+    {% if settings.replacement_mode == "auto" %}
+    <p class="notice compact">Auto mode uploads the copy and trashes the original after compression.</p>
     {% endif %}
     <form method="post" action="/jobs/{{ job.asset_id }}/accept">
-      <button type="submit">{{ "Accept Dry Run" if settings.dry_run else "Accept and Copy" }}</button>
+      <button type="submit" {% if job.target_asset_id %}disabled{% endif %}>Upload Copy</button>
+    </form>
+    <form method="post" action="/jobs/{{ job.asset_id }}/trash-original">
+      <button class="danger-button" type="submit" {% if not job.target_asset_id %}disabled{% endif %}>Trash Original</button>
     </form>
     <form method="post" action="/jobs/{{ job.asset_id }}/reject">
       <button class="danger-button" type="submit">Reject</button>

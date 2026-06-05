@@ -86,8 +86,7 @@ docker compose up -d --build
 - `HANDBRAKE_ENCODER`: default `nvenc_h265`
 - `HANDBRAKE_CLI`: default `HandBrakeCLI`, already available in the Docker image
 - `EXIFTOOL`: default `exiftool`, already available in the Docker image
-- `DRY_RUN`: default `true`
-- `REPLACEMENT_MODE`: default `review`
+- `REPLACEMENT_MODE`: default `review`; valid values are `review` and `auto`
 
 ## GPU encoding
 
@@ -145,7 +144,12 @@ This will be slower, but it confirms the rest of the workflow is healthy.
 
 The app does not modify the downloaded working copy under `/data/work/<asset-id>/`. That file is only a temporary local copy used for encoding and review.
 
-After review, clicking Accept uploads the compressed file to Immich as a new asset, then copies Immich-side information from the original asset to the new asset with the stable v2 copy endpoint:
+In `review` mode, each compressed job exposes two actions:
+
+- `Upload Copy`: uploads the compressed file to Immich as a new asset, then copies Immich-side information from the original asset to the new asset with the stable v2 copy endpoint.
+- `Trash Original`: trashes the original Immich asset after the copied asset exists.
+
+In `auto` mode, both steps run automatically after compression succeeds.
 
 ```text
 POST /api/assets
@@ -155,8 +159,6 @@ PUT /api/assets/copy
 The original asset id remains cached in this app as `asset_id`, and the new uploaded asset id is stored as `target_asset_id`.
 
 `copyAsset` copies Immich-side data such as albums, favorites, shared links, sidecars, and stacks. ExifTool is still used before upload so metadata embedded inside the MP4 migrates with the actual file.
-
-Keep `DRY_RUN=true` until you have reviewed the behavior on test assets. With dry run enabled, Accept records what would happen without uploading the copied asset.
 
 ## Importing already-compressed files
 
