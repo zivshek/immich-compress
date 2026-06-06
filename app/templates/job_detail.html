@@ -13,71 +13,85 @@
   <span class="state state-{{ job.state }}">{{ job.state }}</span>
 </section>
 
-<section class="summary-grid">
-  <div class="panel">
-    <span class="label">Original</span>
-    <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size else asset_info.original_file_size or "-" }}</strong>
+<section class="details-layout">
+  <div class="panel detail-card">
+    <h1>Details</h1>
+    <div class="detail-row">
+      <span class="detail-icon">D</span>
+      <div>
+        <strong>{{ asset_info.date_time or "-" }}</strong>
+        {% if asset_info.duration %}<small>{{ asset_info.duration }}</small>{% endif %}
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">F</span>
+      <div>
+        <strong>{{ asset_info.file_name or job.original_file_name }}</strong>
+        <small>{{ asset_info.file_summary or asset_info.original_file_size or "-" }}</small>
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">C</span>
+      <div>
+        <strong>{{ asset_info.camera or "-" }}</strong>
+        {% if asset_info.camera_settings %}<small>{{ asset_info.camera_settings }}</small>{% endif %}
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">L</span>
+      <div>
+        <strong>{{ asset_info.lens or "-" }}</strong>
+        {% if asset_info.lens_settings %}<small>{{ asset_info.lens_settings }}</small>{% endif %}
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">P</span>
+      <div>
+        <strong>{{ asset_info.location or "-" }}</strong>
+        {% if asset_info.coordinates and asset_info.coordinates != asset_info.location %}
+        <small>{{ asset_info.coordinates }}</small>
+        {% endif %}
+      </div>
+    </div>
   </div>
-  <div class="panel">
-    <span class="label">Compressed</span>
-    <strong>{{ "%.1f"|format(job.compressed_size / 1048576) if job.compressed_size else "-" }} MB</strong>
-  </div>
-  <div class="panel">
-    <span class="label">Saved</span>
-    <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) if job.saved_bytes else "-" }} MB</strong>
-  </div>
-  <div class="panel">
-    <span class="label">Updated</span>
-    <strong>{{ job.updated_at }}</strong>
-  </div>
-  <div class="panel">
-    <span class="label">Original Asset ID</span>
-    <strong class="breakable">{{ job.asset_id }}</strong>
-  </div>
-  <div class="panel">
-    <span class="label">Copied Asset ID</span>
-    <strong class="breakable">{{ job.target_asset_id or "-" }}</strong>
-  </div>
-</section>
 
-<section class="progress-panel panel">
-  <div class="progress-header">
-    <div>
-      <span class="label">Current Step</span>
-      <strong>{{ job.progress_stage or job.state }}</strong>
+  <div class="panel detail-card">
+    <h1>Compression</h1>
+    <div class="metric-grid">
+      <div>
+        <span class="label">Original</span>
+        <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size else asset_info.original_file_size or "-" }}</strong>
+      </div>
+      <div>
+        <span class="label">Compressed</span>
+        <strong>{{ "%.1f"|format(job.compressed_size / 1048576) ~ " MB" if job.compressed_size else "-" }}</strong>
+      </div>
+      <div>
+        <span class="label">Saved</span>
+        <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) ~ " MB" if job.saved_bytes else "-" }}</strong>
+      </div>
+      <div>
+        <span class="label">Updated</span>
+        <strong>{{ job.updated_at }}</strong>
+      </div>
+      <div>
+        <span class="label">Original Asset ID</span>
+        <strong class="breakable">{{ job.asset_id }}</strong>
+      </div>
+      <div>
+        <span class="label">Copied Asset ID</span>
+        <strong class="breakable">{{ job.target_asset_id or "-" }}</strong>
+      </div>
     </div>
-    <strong>{{ "%.0f"|format(job.progress_percent) ~ "%" if job.progress_percent is not none else "-" }}</strong>
-  </div>
-  <div class="progress-track">
-    <div class="progress-fill" style="width: {{ job.progress_percent or 0 }}%"></div>
-  </div>
-</section>
-
-<section>
-  <h1>Original Info</h1>
-  <div class="info-grid">
-    <div class="panel">
-      <span class="label">Date and Time</span>
-      <strong>{{ asset_info.date_time or "-" }}</strong>
+    <div class="progress-header">
+      <div>
+        <span class="label">Current Step</span>
+        <strong>{{ job.progress_stage or job.state }}</strong>
+      </div>
+      <strong>{{ "%.0f"|format(job.progress_percent) ~ "%" if job.progress_percent is not none else "-" }}</strong>
     </div>
-    <div class="panel">
-      <span class="label">Location</span>
-      <strong>{{ asset_info.location or "-" }}</strong>
-      {% if asset_info.coordinates and asset_info.coordinates != asset_info.location %}
-      <small>{{ asset_info.coordinates }}</small>
-      {% endif %}
-    </div>
-    <div class="panel">
-      <span class="label">Camera</span>
-      <strong>{{ asset_info.camera or "-" }}</strong>
-    </div>
-    <div class="panel">
-      <span class="label">Albums</span>
-      <strong>{{ asset_info.albums or "-" }}</strong>
-    </div>
-    <div class="panel">
-      <span class="label">Duration</span>
-      <strong>{{ asset_info.duration or "-" }}</strong>
+    <div class="progress-track">
+      <div class="progress-fill" style="width: {{ job.progress_percent or 0 }}%"></div>
     </div>
   </div>
 </section>

@@ -33,7 +33,7 @@ def safe_job_file(path_value: str | None) -> Path:
     return path
 
 
-def asset_info_for_page(asset: dict, album_names: list[str]) -> dict[str, str]:
+def asset_info_for_page(asset: dict) -> dict[str, object]:
     exif = asset.get("exifInfo") or {}
     city_parts = [
         exif.get("city"),
@@ -48,14 +48,40 @@ def asset_info_for_page(asset: dict, album_names: list[str]) -> dict[str, str]:
         coordinates = f"{latitude}, {longitude}"
 
     camera = " ".join(part for part in [exif.get("make"), exif.get("model")] if part)
+    dimensions = " x ".join(
+        str(part)
+        for part in [
+            exif.get("exifImageWidth") or asset.get("exifInfo", {}).get("exifImageWidth"),
+            exif.get("exifImageHeight") or asset.get("exifInfo", {}).get("exifImageHeight"),
+        ]
+        if part
+    )
     size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
+    file_line_parts = [dimensions, format_bytes(size) if size else ""]
+    file_line = "  ".join(part for part in file_line_parts if part)
+    lens = exif.get("lensModel") or ""
+    lens_line_parts = [
+        f"f/{exif.get('fNumber')}" if exif.get("fNumber") else "",
+        f"{exif.get('focalLength')} mm" if exif.get("focalLength") else "",
+    ]
     return {
         "date_time": asset.get("localDateTime") or asset.get("fileCreatedAt") or "",
         "location": location_name or coordinates,
         "coordinates": coordinates,
         "camera": camera,
-        "albums": ", ".join(album_names),
+        "camera_settings": "  ".join(
+            part
+            for part in [
+                exif.get("exposureTime"),
+                f"ISO {exif.get('iso')}" if exif.get("iso") else "",
+            ]
+            if part
+        ),
+        "lens": lens,
+        "lens_settings": "  ".join(part for part in lens_line_parts if part),
         "duration": asset.get("duration") or "",
+        "file_name": asset.get("originalFileName") or "",
+        "file_summary": file_line,
         "original_file_size": format_bytes(size) if size else "",
     }
 
@@ -239,7 +265,7 @@ def job_detail(request: Request, asset_id: str):
     try:
         client = ImmichClient()
         asset = client.find_asset_by_id(asset_id)
-        asset_info = asset_info_for_page(asset, client.album_names_for_asset(asset_id))
+        asset_info = asset_info_for_page(asset)
     except Exception:
         asset_info = {}
     return templates.TemplateResponse(
