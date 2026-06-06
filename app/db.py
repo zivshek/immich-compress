@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -66,12 +67,43 @@ def init_db() -> None:
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
+        repair_processed_metrics(db)
 
 
 def ensure_column(db: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
     if column not in columns:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def repair_processed_metrics(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+        """
+        SELECT asset_id, logs
+        FROM compression_jobs
+        WHERE state = 'processed'
+          AND (saved_bytes IS NULL OR saved_bytes = 0)
+          AND logs LIKE '%Compressed to % MB; saved % MB%'
+        """
+    ).fetchall()
+    pattern = re.compile(r"Compressed to ([\d.]+) MB; saved ([\d.-]+) MB")
+    for row in rows:
+        match = pattern.search(row["logs"] or "")
+        if not match:
+            continue
+        compressed_size = round(float(match.group(1)) * 1024 * 1024)
+        saved_bytes = round(float(match.group(2)) * 1024 * 1024)
+        if saved_bytes <= 0:
+            continue
+        original_size = compressed_size + saved_bytes
+        db.execute(
+            """
+            UPDATE compression_jobs
+            SET original_size = ?, compressed_size = ?, saved_bytes = ?
+            WHERE asset_id = ?
+            """,
+            (original_size, compressed_size, saved_bytes, row["asset_id"]),
+        )
 
 
 @contextmanager
@@ -160,13 +192,13 @@ def get_dashboard_stats() -> sqlite3.Row:
               SUM(CASE WHEN state IN ('failed', 'copy-failed', 'trash-failed', 'replace-failed') THEN 1 ELSE 0 END)
                 AS failed_jobs,
               COALESCE(SUM(CASE
-                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                WHEN state IN ('processed', 'copied', 'copied-and-trashed', 'replaced')
                 THEN original_size ELSE 0 END), 0) AS converted_original_bytes,
               COALESCE(SUM(CASE
-                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                WHEN state IN ('processed', 'copied', 'copied-and-trashed', 'replaced')
                 THEN compressed_size ELSE 0 END), 0) AS converted_compressed_bytes,
               COALESCE(SUM(CASE
-                WHEN state IN ('copied', 'copied-and-trashed', 'replaced')
+                WHEN state IN ('processed', 'copied', 'copied-and-trashed', 'replaced')
                 THEN saved_bytes ELSE 0 END), 0) AS converted_saved_bytes
             FROM compression_jobs
             """

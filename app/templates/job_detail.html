@@ -60,15 +60,15 @@
     <div class="metric-grid">
       <div>
         <span class="label">Original</span>
-        <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size else asset_info.original_file_size or "-" }}</strong>
+        <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size is not none else "-" }}</strong>
       </div>
       <div>
         <span class="label">Compressed</span>
-        <strong>{{ "%.1f"|format(job.compressed_size / 1048576) ~ " MB" if job.compressed_size else "-" }}</strong>
+        <strong>{{ "%.1f"|format(job.compressed_size / 1048576) ~ " MB" if job.compressed_size is not none else asset_info.original_file_size or "-" }}</strong>
       </div>
       <div>
         <span class="label">Saved</span>
-        <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) ~ " MB" if job.saved_bytes else "-" }}</strong>
+        <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) ~ " MB" if job.saved_bytes is not none else "-" }}</strong>
       </div>
       <div>
         <span class="label">Updated</span>
