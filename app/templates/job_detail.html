@@ -71,8 +71,8 @@
         <strong>{{ "%.1f"|format(job.saved_bytes / 1048576) ~ " MB" if job.saved_bytes is not none else "-" }}</strong>
       </div>
       <div>
-        <span class="label">Updated</span>
-        <strong>{{ job.updated_at }}</strong>
+        <span class="label">Processed</span>
+        <strong>{{ job.process_started_at or "-" }}</strong>
       </div>
       <div>
         <span class="label">Original Asset ID</span>

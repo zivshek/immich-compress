@@ -22,8 +22,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS app_settings (
               key TEXT PRIMARY KEY,
-              value TEXT NOT NULL,
-              updated_at TEXT NOT NULL
+              value TEXT NOT NULL
             )
             """
         )
@@ -46,8 +45,7 @@ def init_db() -> None:
               error TEXT,
               logs TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
-              process_started_at TEXT,
-              updated_at TEXT NOT NULL
+              process_started_at TEXT
             )
             """
         )
@@ -59,8 +57,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS processing_batches (
               id TEXT PRIMARY KEY,
               total_jobs INTEGER NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
+              created_at TEXT NOT NULL
             )
             """
         )
@@ -69,6 +66,9 @@ def init_db() -> None:
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
         ensure_column(db, "compression_jobs", "process_started_at", "TEXT")
+        drop_column(db, "compression_jobs", "updated_at")
+        drop_column(db, "processing_batches", "updated_at")
+        drop_column(db, "app_settings", "updated_at")
         db.execute(
             """
             UPDATE compression_jobs
@@ -83,6 +83,12 @@ def ensure_column(db: sqlite3.Connection, table: str, column: str, definition: s
     columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
     if column not in columns:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def drop_column(db: sqlite3.Connection, table: str, column: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+    if column in columns:
+        db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
 
 
 def repair_processed_metrics(db: sqlite3.Connection) -> None:
@@ -167,10 +173,10 @@ def create_batch(total_jobs: int) -> str:
     with connect() as db:
         db.execute(
             """
-            INSERT INTO processing_batches(id, total_jobs, created_at, updated_at)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO processing_batches(id, total_jobs, created_at)
+            VALUES(?, ?, ?)
             """,
-            (batch_id, total_jobs, now, now),
+            (batch_id, total_jobs, now),
         )
     return batch_id
 
@@ -277,22 +283,20 @@ def upsert_job(
     with connect() as db:
         db.execute(
             """
-            INSERT INTO compression_jobs(asset_id, original_file_name, state, batch_id, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO compression_jobs(asset_id, original_file_name, state, batch_id, created_at)
+            VALUES(?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET
               original_file_name = excluded.original_file_name,
               state = excluded.state,
-              batch_id = COALESCE(excluded.batch_id, compression_jobs.batch_id),
-              updated_at = excluded.updated_at
+              batch_id = COALESCE(excluded.batch_id, compression_jobs.batch_id)
             """,
-            (asset_id, original_file_name, state, batch_id, now, now),
+            (asset_id, original_file_name, state, batch_id, now),
         )
 
 
 def update_job(asset_id: str, **values: object) -> None:
     if not values:
         return
-    values["updated_at"] = utc_now()
     columns = ", ".join(f"{key} = ?" for key in values)
     params = list(values.values()) + [asset_id]
     with connect() as db:
@@ -318,9 +322,9 @@ def set_setting(key: str, value: str) -> None:
     with connect() as db:
         db.execute(
             """
-            INSERT INTO app_settings(key, value, updated_at)
-            VALUES(?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            INSERT INTO app_settings(key, value)
+            VALUES(?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
             """,
-            (key, value, utc_now()),
+            (key, value),
         )
