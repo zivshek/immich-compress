@@ -96,6 +96,14 @@
   </div>
 </section>
 
+{% if can_cancel %}
+<section class="toolbar">
+  <form method="post" action="/jobs/{{ job.asset_id }}/cancel">
+    <button class="danger-button" type="submit">Cancel Job</button>
+  </form>
+</section>
+{% endif %}
+
 {% if job.output_path or job.target_asset_id %}
 <section class="review-layout">
   {% if job.output_path %}

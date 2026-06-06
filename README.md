@@ -15,6 +15,8 @@ This repo is an early scaffold. It can:
 - compress it with HandBrakeCLI using the migrated `hbed.py` behavior
 - copy metadata with ExifTool
 - leave the compressed output in review state
+- queue selected or all unprocessed videos without duplicate processing
+- cancel individual jobs or cancel active work and clear the entire queue
 
 Accepted videos are uploaded as new Immich assets, then Immich-side details are copied from the original asset with `copyAsset`. The original asset id and copied asset id are both tracked in this app.
 

@@ -4,8 +4,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from queue import Queue
-from dataclasses import dataclass
+from queue import Empty, Queue
 
 from app import db
 from app.compression import compress_with_handbrake
@@ -19,45 +18,123 @@ ASSET_ID_RE = re.compile(
 LEGACY_PROCESSED_SUFFIX = "-hbed"
 
 
-@dataclass(frozen=True)
-class QueuedJob:
-    asset_id: str
-    batch_id: str | None = None
-
-
 class JobQueue:
     def __init__(self) -> None:
-        self.queue: Queue[QueuedJob] = Queue()
+        self.queue: Queue[str] = Queue()
         self.started = False
+        self.lock = threading.Lock()
+        self.queued_ids: set[str] = set()
+        self.active: dict[str, threading.Event] = {}
+        self.run_total = 0
+        self.run_completed = 0
 
     def start(self) -> None:
         if self.started:
             return
+        for job in db.list_jobs_by_states({"pending", "compressing", "copying"}):
+            mark_canceled(job["asset_id"], "Canceled after the app restarted.")
         self.started = True
         for index in range(max(1, settings.max_concurrent_jobs)):
             thread = threading.Thread(target=self._worker, name=f"compress-worker-{index}", daemon=True)
             thread.start()
 
-    def enqueue(self, asset_id_or_url: str, batch_id: str | None = None) -> str:
+    def enqueue(self, asset_id_or_url: str) -> str:
         asset_id = parse_asset_id(asset_id_or_url)
         client = ImmichClient()
         asset = client.find_asset_by_id(asset_id)
-        db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, batch_id=batch_id)
-        self.queue.put(QueuedJob(asset_id=asset_id, batch_id=batch_id))
+        self.enqueue_asset(asset)
         return asset_id
 
-    def enqueue_asset(self, asset: dict, batch_id: str | None = None) -> str:
+    def enqueue_asset(self, asset: dict) -> bool:
         asset_id = asset["id"]
-        db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, batch_id=batch_id)
-        self.queue.put(QueuedJob(asset_id=asset_id, batch_id=batch_id))
-        return asset_id
+        with self.lock:
+            if asset_id in self.queued_ids or asset_id in self.active:
+                return False
+            job = db.get_job_for_asset(asset_id)
+            if job and job["state"] not in {"failed", "rejected", "canceled"}:
+                return False
+            if not self.queued_ids and not self.active:
+                self.run_total = 0
+                self.run_completed = 0
+            db.upsert_job(asset_id, asset.get("originalFileName") or asset_id)
+            self.queued_ids.add(asset_id)
+            self.run_total += 1
+            self.queue.put(asset_id)
+        return True
+
+    def snapshot(self) -> dict[str, object] | None:
+        with self.lock:
+            active_ids = list(self.active)
+            queued_ids = list(self.queued_ids)
+            total = self.run_total
+            completed = self.run_completed
+        if not active_ids and not queued_ids:
+            return None
+        active_jobs = [job for asset_id in active_ids if (job := db.get_job(asset_id))]
+        queued_jobs = [job for asset_id in queued_ids if (job := db.get_job(asset_id))]
+        active_progress = sum((job["progress_percent"] or 0) / 100 for job in active_jobs)
+        percent = ((completed + active_progress) / total * 100) if total else 0
+        return {
+            "total": total,
+            "completed": completed,
+            "percent": percent,
+            "active": active_jobs,
+            "queued": queued_jobs,
+        }
+
+    def cancel_job(self, asset_id: str) -> bool:
+        with self.lock:
+            cancel_event = self.active.get(asset_id)
+            if cancel_event:
+                cancel_event.set()
+                return True
+            if asset_id in self.queued_ids:
+                self.queued_ids.remove(asset_id)
+                self.run_completed += 1
+                mark_canceled(asset_id)
+                return True
+        return False
+
+    def cancel_all(self) -> None:
+        with self.lock:
+            for cancel_event in self.active.values():
+                cancel_event.set()
+            queued_ids = set(self.queued_ids)
+            self.queued_ids.clear()
+            self.run_total = len(self.active)
+            self.run_completed = 0
+        for asset_id in queued_ids:
+            mark_canceled(asset_id)
+        while True:
+            try:
+                self.queue.get_nowait()
+                self.queue.task_done()
+            except Empty:
+                break
 
     def _worker(self) -> None:
         while True:
-            queued = self.queue.get()
+            asset_id = self.queue.get()
+            activated = False
             try:
-                process_asset(queued.asset_id, queued.batch_id)
+                with self.lock:
+                    if asset_id not in self.queued_ids:
+                        continue
+                    self.queued_ids.remove(asset_id)
+                    cancel_event = threading.Event()
+                    self.active[asset_id] = cancel_event
+                    activated = True
+                job = db.get_job(asset_id)
+                if job and job["state"] == "pending":
+                    try:
+                        process_asset(asset_id, cancel_event)
+                    except Exception as exc:
+                        db.update_job(asset_id, state="failed", error=str(exc))
             finally:
+                with self.lock:
+                    self.active.pop(asset_id, None)
+                    if activated:
+                        self.run_completed += 1
                 self.queue.task_done()
 
 
@@ -68,15 +145,16 @@ def parse_asset_id(value: str) -> str:
     return match.group(0)
 
 
-def process_asset(asset_id: str, batch_id: str | None = None) -> None:
+def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
     config = effective_settings()
     client = ImmichClient(config)
     asset = client.find_asset_by_id(asset_id)
+    raise_if_canceled(cancel_event)
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
     db.update_job(asset_id, process_started_at=db.utc_now())
     if is_legacy_processed_filename(original_name):
         current_size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
-        db.upsert_job(asset_id, original_name, "processed", batch_id=batch_id)
+        db.upsert_job(asset_id, original_name, "processed")
         db.update_job(
             asset_id,
             compressed_size=current_size,
@@ -90,13 +168,14 @@ def process_asset(asset_id: str, batch_id: str | None = None) -> None:
         )
         return
 
-    db.upsert_job(asset_id, original_name, "compressing", batch_id=batch_id)
+    db.upsert_job(asset_id, original_name, "compressing")
 
     work_dir = config.data_dir / "work" / asset_id
     input_path = work_dir / original_name
     output_dir = work_dir / "compressed"
     try:
-        client.download_original(asset_id, input_path)
+        client.download_original(asset_id, input_path, cancel_event.is_set)
+        raise_if_canceled(cancel_event)
         original_size = input_path.stat().st_size
         db.update_job(
             asset_id,
@@ -115,7 +194,14 @@ def process_asset(asset_id: str, batch_id: str | None = None) -> None:
             if line:
                 db.append_job_log(asset_id, line)
 
-        result = compress_with_handbrake(input_path, output_dir, config, progress)
+        result = compress_with_handbrake(
+            input_path,
+            output_dir,
+            config,
+            progress,
+            cancel_event.is_set,
+        )
+        raise_if_canceled(cancel_event)
         db.update_job(
             asset_id,
             state="review",
@@ -128,11 +214,14 @@ def process_asset(asset_id: str, batch_id: str | None = None) -> None:
             progress_percent=100,
             error=None,
         )
+        raise_if_canceled(cancel_event)
         if config.replacement_mode == "auto":
             try:
                 upload_copy(asset_id, trash_original=True)
             except Exception as exc:
                 db.update_job(asset_id, state="copy-failed", error=str(exc))
+    except InterruptedError:
+        mark_canceled(asset_id)
     except Exception as exc:
         db.update_job(asset_id, state="failed", error=str(exc))
 
@@ -237,6 +326,27 @@ def cleanup_work_dir(asset_id: str) -> None:
     work_dir = effective_settings().data_dir / "work" / asset_id
     if work_dir.exists():
         shutil.rmtree(work_dir)
+
+
+def raise_if_canceled(cancel_event: threading.Event) -> None:
+    if cancel_event.is_set():
+        raise InterruptedError("Job canceled")
+
+
+def mark_canceled(asset_id: str, message: str = "Canceled and deleted local work files.") -> None:
+    cleanup_work_dir(asset_id)
+    job = db.get_job(asset_id)
+    if not job:
+        return
+    db.update_job(
+        asset_id,
+        state="canceled",
+        original_path=None,
+        output_path=None,
+        progress_stage="Canceled",
+        error=None,
+        logs=(job["logs"] or "") + f"\n{message}",
+    )
 
 
 def is_legacy_processed_filename(file_name: str) -> bool:

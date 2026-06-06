@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -152,6 +154,7 @@ def compress_with_handbrake(
     output_dir: Path | None = None,
     config: Settings = settings,
     progress_callback: Callable[[str, float | None, str | None], None] | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> CompressionResult:
     if not is_supported_video(input_path):
         raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
@@ -207,11 +210,30 @@ def compress_with_handbrake(
             universal_newlines=True,
             errors="replace",
         )
+
+        def stop_when_canceled() -> None:
+            while process.poll() is None:
+                if cancel_requested and cancel_requested():
+                    process.terminate()
+                    return
+                time.sleep(0.25)
+
+        if cancel_requested:
+            threading.Thread(target=stop_when_canceled, daemon=True).start()
         log_lines: list[str] = []
         last_stage = ""
         last_percent = -1.0
         assert process.stdout is not None
         for raw_line in process.stdout:
+            if cancel_requested and cancel_requested():
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                output_path.unlink(missing_ok=True)
+                raise InterruptedError("Job canceled")
             line = raw_line.strip()
             if not line:
                 continue
@@ -228,6 +250,9 @@ def compress_with_handbrake(
 
         process.wait()
         logs = "\n".join(log_lines)
+        if cancel_requested and cancel_requested():
+            output_path.unlink(missing_ok=True)
+            raise InterruptedError("Job canceled")
         if process.returncode != 0:
             output_path.unlink(missing_ok=True)
             raise RuntimeError(f"HandBrake failed with exit code {process.returncode}\n{logs[-4000:]}")

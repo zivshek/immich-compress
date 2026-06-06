@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% if batch and batch.active %}
+{% if queue and (queue.active or queue.queued) %}
 <script>
   window.setTimeout(() => window.location.reload(), 3000);
 </script>
@@ -11,25 +11,40 @@
     <button type="submit">Process Asset</button>
   </form>
 </section>
-{% if batch %}
+{% if queue %}
 <section class="progress-panel panel">
   <div class="progress-header">
     <div>
-      <span class="label">Latest Batch</span>
-      <strong>{{ batch.completed }} of {{ batch.total }} complete</strong>
+      <span class="label">Current Queue</span>
+      <strong>{{ queue.completed }} of {{ queue.total }} complete</strong>
     </div>
-    <strong>{{ "%.0f"|format(batch.percent) }}%</strong>
+    <form method="post" action="/jobs/cancel-all">
+      <button class="danger-button" type="submit" onclick="return confirm('Cancel active jobs and clear the queue?')">Cancel Queue</button>
+    </form>
   </div>
   <div class="progress-track">
-    <div class="progress-fill" style="width: {{ batch.percent }}%"></div>
+    <div class="progress-fill" style="width: {{ queue.percent }}%"></div>
   </div>
-  {% if batch.active %}
-  <div class="batch-list">
-    {% for job in batch.active %}
+  {% if queue.active or queue.queued %}
+  <div class="queue-list">
+    {% for job in queue.active %}
     <div>
       <a href="/jobs/{{ job.asset_id }}">{{ job.original_file_name }}</a>
       <span>{{ job.progress_stage or job.state }}</span>
       <span>{{ "%.0f"|format(job.progress_percent) ~ "%" if job.progress_percent is not none else "-" }}</span>
+      <form method="post" action="/jobs/{{ job.asset_id }}/cancel">
+        <button class="danger-button compact-button" type="submit">Cancel</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% for job in queue.queued %}
+    <div>
+      <a href="/jobs/{{ job.asset_id }}">{{ job.original_file_name }}</a>
+      <span>Queued</span>
+      <span>-</span>
+      <form method="post" action="/jobs/{{ job.asset_id }}/cancel">
+        <button class="danger-button compact-button" type="submit">Cancel</button>
+      </form>
     </div>
     {% endfor %}
   </div>

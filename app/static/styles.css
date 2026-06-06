@@ -8,6 +8,7 @@
   --accent: #146c63;
   --accent-strong: #0c514a;
   --danger: #a63a3a;
+  --warning: #c56a16;
 }
 
 * {
@@ -176,6 +177,14 @@ h1 {
   margin: 18px 0 24px;
 }
 
+.video-actions {
+  justify-content: flex-end;
+}
+
+.video-pager {
+  justify-content: flex-end;
+}
+
 .pager {
   align-items: center;
   display: flex;
@@ -194,7 +203,7 @@ h1 {
   width: auto;
 }
 
-.batch-list {
+.queue-list {
   border-top: 1px solid var(--line);
   display: grid;
   gap: 8px;
@@ -202,14 +211,14 @@ h1 {
   padding-top: 12px;
 }
 
-.batch-list div {
+.queue-list div {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 140px 60px;
+  grid-template-columns: minmax(0, 1fr) 140px 60px 86px;
 }
 
-.batch-list a {
+.queue-list a {
   color: var(--accent);
   font-weight: 600;
   overflow: hidden;
@@ -266,6 +275,17 @@ button:disabled {
 .danger-button {
   background: var(--danger);
   border-color: var(--danger);
+}
+
+.warning-button {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+.compact-button {
+  min-height: 32px;
+  min-width: 76px;
+  padding: 5px 8px;
 }
 
 .secondary-button {
@@ -340,6 +360,11 @@ th {
 }
 
 .state-rejected {
+  background: #f5dddd;
+  color: var(--danger);
+}
+
+.state-canceled {
   background: #f5dddd;
   color: var(--danger);
 }
@@ -510,7 +535,7 @@ label {
   }
 
   .pager,
-  .batch-list div {
+  .queue-list div {
     align-items: stretch;
     grid-template-columns: 1fr;
   }

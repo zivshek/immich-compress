@@ -1,14 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="toolbar">
-  <form method="post" action="/videos/process-all">
-    <button type="submit">Process All Unprocessed</button>
-  </form>
-</section>
-
 <section>
-  <h1>Videos</h1>
   <form method="post" action="/videos/process-selected">
+    <div class="toolbar video-actions">
+      <button class="warning-button" type="submit" formaction="/videos/process-all" onclick="return confirm('Queue every unprocessed video?')">Process All Unprocessed</button>
+      <button type="submit">Process Selected</button>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -51,8 +48,7 @@
         </tbody>
       </table>
     </div>
-    <div class="pager">
-      <button type="submit">Process Selected</button>
+    <div class="pager video-pager">
       <span>
         {% if has_previous %}<a class="button secondary" href="/videos?page={{ page - 1 }}">Previous</a>{% endif %}
         <span>Page {{ page }}</span>

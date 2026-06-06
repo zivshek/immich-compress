@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -64,12 +64,19 @@ class ImmichClient:
     def find_asset_by_id(self, asset_id: str) -> dict[str, Any]:
         return self.request("GET", f"assets/{asset_id}")
 
-    def download_original(self, asset_id: str, destination: Path) -> Path:
+    def download_original(
+        self,
+        asset_id: str,
+        destination: Path,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with self.session.get(self.api_url(f"assets/{asset_id}/original"), stream=True, timeout=300) as r:
             r.raise_for_status()
             with destination.open("wb") as file:
                 for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if cancel_requested and cancel_requested():
+                        raise InterruptedError("Job canceled")
                     if chunk:
                         file.write(chunk)
         return destination

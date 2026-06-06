@@ -197,11 +197,11 @@ def save_settings(
 
 @app.get("/jobs")
 def jobs_page(request: Request):
-    batch = db.batch_stats(None)
+    queue_status = job_queue.snapshot()
     return templates.TemplateResponse(
         request,
         "jobs.html",
-        {"settings": effective_settings(), "jobs": db.list_jobs(200), "batch": batch},
+        {"settings": effective_settings(), "jobs": db.list_jobs(200), "queue": queue_status},
     )
 
 
@@ -257,19 +257,9 @@ def process_selected(asset_ids: list[str] = Form(default=[])):
     if not asset_ids:
         return RedirectResponse("/videos", status_code=303)
     client = ImmichClient()
-    existing = db.list_jobs_for_assets(asset_ids)
-    processable_ids = [
-        asset_id
-        for asset_id in asset_ids
-        if (existing.get(asset_id)["state"] if existing.get(asset_id) else "unprocessed")
-        in {"failed", "rejected", "unprocessed"}
-    ]
-    if not processable_ids:
-        return RedirectResponse("/videos", status_code=303)
-    batch_id = db.create_batch(len(processable_ids))
-    for asset_id in processable_ids:
+    for asset_id in asset_ids:
         asset = client.find_asset_by_id(asset_id)
-        job_queue.enqueue_asset(asset, batch_id=batch_id)
+        job_queue.enqueue_asset(asset)
     return RedirectResponse("/jobs", status_code=303)
 
 
@@ -287,20 +277,21 @@ def process_all_videos():
             break
         page += 1
 
-    jobs_by_asset = db.list_jobs_for_assets([asset["id"] for asset in all_assets])
-    processable_states = {"failed", "rejected", "unprocessed"}
-    pending_assets = []
     for asset in all_assets:
-        job = jobs_by_asset.get(asset["id"])
-        state = job["state"] if job else "unprocessed"
-        if state in processable_states:
-            pending_assets.append(asset)
-
-    if pending_assets:
-        batch_id = db.create_batch(len(pending_assets))
-        for asset in pending_assets:
-            job_queue.enqueue_asset(asset, batch_id=batch_id)
+        job_queue.enqueue_asset(asset)
     return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/jobs/cancel-all")
+def cancel_all_jobs():
+    job_queue.cancel_all()
+    return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/jobs/{asset_id}/cancel")
+def cancel_job(asset_id: str):
+    job_queue.cancel_job(asset_id)
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 
 @app.get("/jobs/{asset_id}")
@@ -318,7 +309,12 @@ def job_detail(request: Request, asset_id: str):
     return templates.TemplateResponse(
         request,
         "job_detail.html",
-        {"settings": effective_settings(), "job": job, "asset_info": asset_info},
+        {
+            "settings": effective_settings(),
+            "job": job,
+            "asset_info": asset_info,
+            "can_cancel": job["state"] in {"pending", "compressing"},
+        },
     )
 
 
