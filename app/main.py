@@ -32,6 +32,46 @@ def safe_job_file(path_value: str | None) -> Path:
     return path
 
 
+def asset_info_for_page(asset: dict, album_names: list[str]) -> dict[str, str]:
+    exif = asset.get("exifInfo") or {}
+    city_parts = [
+        exif.get("city"),
+        exif.get("state"),
+        exif.get("country"),
+    ]
+    location_name = ", ".join(part for part in city_parts if part)
+    latitude = exif.get("latitude")
+    longitude = exif.get("longitude")
+    coordinates = ""
+    if latitude is not None and longitude is not None:
+        coordinates = f"{latitude}, {longitude}"
+
+    camera = " ".join(part for part in [exif.get("make"), exif.get("model")] if part)
+    size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
+    return {
+        "date_time": asset.get("localDateTime") or asset.get("fileCreatedAt") or "",
+        "location": location_name or coordinates,
+        "coordinates": coordinates,
+        "camera": camera,
+        "albums": ", ".join(album_names),
+        "duration": asset.get("duration") or "",
+        "original_file_size": format_bytes(size) if size else "",
+    }
+
+
+def format_bytes(value: object) -> str:
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return ""
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit = 0
+    while size >= 1024 and unit < len(units) - 1:
+        size /= 1024
+        unit += 1
+    return f"{size:.1f} {units[unit]}"
+
+
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
@@ -109,10 +149,17 @@ def job_detail(request: Request, asset_id: str):
     job = db.get_job(asset_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    asset_info = {}
+    try:
+        client = ImmichClient()
+        asset = client.find_asset_by_id(asset_id)
+        asset_info = asset_info_for_page(asset, client.album_names_for_asset(asset_id))
+    except Exception:
+        asset_info = {}
     return templates.TemplateResponse(
         request,
         "job_detail.html",
-        {"settings": effective_settings(), "job": job},
+        {"settings": effective_settings(), "job": job, "asset_info": asset_info},
     )
 
 

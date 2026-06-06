@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
+{% if job.state in ["compressing", "copying"] %}
+<script>
+  window.setTimeout(() => window.location.reload(), 3000);
+</script>
+{% endif %}
 <section class="detail-header">
   <div>
     <a class="back-link" href="/jobs">Back to jobs</a>
@@ -11,7 +16,7 @@
 <section class="summary-grid">
   <div class="panel">
     <span class="label">Original</span>
-    <strong>{{ "%.1f"|format(job.original_size / 1048576) if job.original_size else "-" }} MB</strong>
+    <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size else asset_info.original_file_size or "-" }}</strong>
   </div>
   <div class="panel">
     <span class="label">Compressed</span>
@@ -32,6 +37,48 @@
   <div class="panel">
     <span class="label">Copied Asset ID</span>
     <strong class="breakable">{{ job.target_asset_id or "-" }}</strong>
+  </div>
+</section>
+
+<section class="progress-panel panel">
+  <div class="progress-header">
+    <div>
+      <span class="label">Current Step</span>
+      <strong>{{ job.progress_stage or job.state }}</strong>
+    </div>
+    <strong>{{ "%.0f"|format(job.progress_percent) ~ "%" if job.progress_percent is not none else "-" }}</strong>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" style="width: {{ job.progress_percent or 0 }}%"></div>
+  </div>
+</section>
+
+<section>
+  <h1>Original Info</h1>
+  <div class="info-grid">
+    <div class="panel">
+      <span class="label">Date and Time</span>
+      <strong>{{ asset_info.date_time or "-" }}</strong>
+    </div>
+    <div class="panel">
+      <span class="label">Location</span>
+      <strong>{{ asset_info.location or "-" }}</strong>
+      {% if asset_info.coordinates and asset_info.coordinates != asset_info.location %}
+      <small>{{ asset_info.coordinates }}</small>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <span class="label">Camera</span>
+      <strong>{{ asset_info.camera or "-" }}</strong>
+    </div>
+    <div class="panel">
+      <span class="label">Albums</span>
+      <strong>{{ asset_info.albums or "-" }}</strong>
+    </div>
+    <div class="panel">
+      <span class="label">Duration</span>
+      <strong>{{ asset_info.duration or "-" }}</strong>
+    </div>
   </div>
 </section>
 
@@ -74,7 +121,7 @@
 
 {% if job.logs %}
 <section>
-  <h1>Encode Log</h1>
+  <h1>Job Log</h1>
   <pre class="log-box">{{ job.logs }}</pre>
 </section>
 {% endif %}

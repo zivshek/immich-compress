@@ -119,6 +119,10 @@ class ImmichClient:
                 )
         return result
 
+    def album_names_for_asset(self, asset_id: str) -> list[str]:
+        memberships = self.album_memberships([asset_id])
+        return [album["albumName"] for album in memberships.get(asset_id, [])]
+
     def add_asset_to_album(self, asset_id: str, album_id: str) -> None:
         self.request("PUT", f"albums/{album_id}/assets", json={"ids": [asset_id]})
 

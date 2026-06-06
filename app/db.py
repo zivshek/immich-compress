@@ -38,6 +38,8 @@ def init_db() -> None:
               original_size INTEGER,
               compressed_size INTEGER,
               saved_bytes INTEGER,
+              progress_stage TEXT,
+              progress_percent REAL,
               error TEXT,
               logs TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
@@ -49,6 +51,8 @@ def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_asset_id ON compression_jobs(asset_id)"
         )
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
+        ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
+        ensure_column(db, "compression_jobs", "progress_percent", "REAL")
 
 
 def ensure_column(db: sqlite3.Connection, table: str, column: str, definition: str) -> None:
@@ -136,6 +140,15 @@ def update_job(asset_id: str, **values: object) -> None:
     params = list(values.values()) + [asset_id]
     with connect() as db:
         db.execute(f"UPDATE compression_jobs SET {columns} WHERE asset_id = ?", params)
+
+
+def append_job_log(asset_id: str, line: str, *, max_chars: int = 12000) -> None:
+    job = get_job(asset_id)
+    current = job["logs"] if job else ""
+    text = (current + "\n" + line).strip()
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    update_job(asset_id, logs=text)
 
 
 def get_setting(key: str, default: str = "") -> str:

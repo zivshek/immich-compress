@@ -65,7 +65,25 @@ def process_asset(asset_id: str) -> None:
     output_dir = work_dir / "compressed"
     try:
         client.download_original(asset_id, input_path)
-        result = compress_with_handbrake(input_path, output_dir, config)
+        original_size = input_path.stat().st_size
+        db.update_job(
+            asset_id,
+            original_path=str(input_path),
+            original_size=original_size,
+            progress_stage="Downloaded",
+            progress_percent=0,
+            logs=f"Downloaded original: {original_size / 1048576:.1f} MB",
+        )
+
+        def progress(stage: str, percent: float | None, line: str | None) -> None:
+            values: dict[str, object] = {"progress_stage": stage}
+            if percent is not None:
+                values["progress_percent"] = max(0, min(100, percent))
+            db.update_job(asset_id, **values)
+            if line:
+                db.append_job_log(asset_id, line)
+
+        result = compress_with_handbrake(input_path, output_dir, config, progress)
         db.update_job(
             asset_id,
             state="review",
@@ -74,7 +92,8 @@ def process_asset(asset_id: str) -> None:
             original_size=result.original_size,
             compressed_size=result.compressed_size,
             saved_bytes=result.saved_bytes,
-            logs=result.logs[-10000:],
+            progress_stage="Review",
+            progress_percent=100,
             error=None,
         )
         if config.replacement_mode == "auto":

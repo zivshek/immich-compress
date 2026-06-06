@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from app.config import Settings, settings
 
@@ -150,6 +151,7 @@ def compress_with_handbrake(
     input_path: Path,
     output_dir: Path | None = None,
     config: Settings = settings,
+    progress_callback: Callable[[str, float | None, str | None], None] | None = None,
 ) -> CompressionResult:
     if not is_supported_video(input_path):
         raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
@@ -162,6 +164,8 @@ def compress_with_handbrake(
         raise RuntimeError(f"Output already exists: {output_path}")
 
     original_size = input_path.stat().st_size
+    if progress_callback:
+        progress_callback("Probing", 0, f"Original file size: {original_size / 1048576:.1f} MB")
     video_info = probe_video(input_path, config)
     if config.upscale_to_4k:
         target_w, target_h = get_4k_dimensions(video_info.width, video_info.height)
@@ -172,6 +176,8 @@ def compress_with_handbrake(
     temp_input: Path | None = None
     try:
         if video_info.rotation % 360 != 0:
+            if progress_callback:
+                progress_callback("Preparing", None, f"Neutralizing rotation metadata: {video_info.rotation}")
             temp_input = make_rotation_neutral_input(input_path, config)
             input_for_handbrake = temp_input
 
@@ -192,19 +198,57 @@ def compress_with_handbrake(
             "--encoder",
             config.handbrake_encoder,
         ]
-        process = subprocess.run(command, capture_output=True, text=True, errors="replace")
-        logs = (process.stdout or "") + (process.stderr or "")
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            errors="replace",
+        )
+        log_lines: list[str] = []
+        last_stage = ""
+        last_percent = -1.0
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.strip()
+            if not line:
+                continue
+            log_lines.append(line)
+            progress = parse_handbrake_progress(line)
+            if progress:
+                stage, percent = progress
+                if progress_callback and (stage != last_stage or percent - last_percent >= 1):
+                    progress_callback(stage, percent, compact_log_line(line))
+                    last_stage = stage
+                    last_percent = percent
+            elif progress_callback and should_log_handbrake_line(line):
+                progress_callback(last_stage or "Encoding", None, compact_log_line(line))
+
+        process.wait()
+        logs = "\n".join(log_lines)
         if process.returncode != 0:
             output_path.unlink(missing_ok=True)
-            raise RuntimeError(f"HandBrake failed with exit code {process.returncode}\n{logs}")
+            raise RuntimeError(f"HandBrake failed with exit code {process.returncode}\n{logs[-4000:]}")
         if not output_path.exists() or output_path.stat().st_size == 0:
             raise RuntimeError("HandBrake output file does not exist or is empty")
 
+        if progress_callback:
+            progress_callback("Metadata", 100, "Copying metadata with ExifTool")
         copy_metadata(input_path, output_path, config)
         artifact = Path(str(output_path) + "_original")
         artifact.unlink(missing_ok=True)
 
         compressed_size = output_path.stat().st_size
+        if progress_callback:
+            saved = original_size - compressed_size
+            pct = (saved / original_size * 100) if original_size else 0
+            progress_callback(
+                "Complete",
+                100,
+                f"Compressed to {compressed_size / 1048576:.1f} MB; saved {saved / 1048576:.1f} MB ({pct:.1f}%).",
+            )
         return CompressionResult(
             output_path=output_path,
             original_size=original_size,
@@ -215,6 +259,47 @@ def compress_with_handbrake(
     finally:
         if temp_input:
             temp_input.unlink(missing_ok=True)
+
+
+def parse_handbrake_progress(line: str) -> tuple[str, float] | None:
+    if "Scanning title" in line and "%" in line:
+        percent = percent_before_marker(line)
+        if percent is not None:
+            return "Scanning", percent
+    if "Encoding: task" in line and "%" in line:
+        percent = percent_before_marker(line)
+        if percent is not None:
+            return "Encoding", percent
+    return None
+
+
+def percent_before_marker(line: str) -> float | None:
+    try:
+        return float(line.split("%", 1)[0].split(",")[-1].strip())
+    except ValueError:
+        return None
+
+
+def should_log_handbrake_line(line: str) -> bool:
+    interesting = (
+        "Using preset:",
+        "encoder:",
+        "quality:",
+        "Output geometry",
+        "Starting Task",
+        "Encode done",
+        "HandBrake has exited",
+        "ERROR:",
+        "Cannot load",
+        "Failure",
+    )
+    return any(marker in line for marker in interesting)
+
+
+def compact_log_line(line: str, max_length: int = 220) -> str:
+    if len(line) <= max_length:
+        return line
+    return line[: max_length - 3] + "..."
 
 
 def copy_metadata(original_path: Path, compressed_path: Path, config: Settings = settings) -> None:
