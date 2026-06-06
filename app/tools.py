@@ -61,13 +61,19 @@ def handbrake_presets(config: Settings) -> list[HandBrakeOption]:
         return []
     try:
         data = decode_first_json(output)
-        names: list[str] = []
+        options: list[HandBrakeOption] = []
 
         def collect(value: object) -> None:
             if isinstance(value, dict):
                 name = value.get("PresetName")
                 if isinstance(name, str) and not value.get("Folder"):
-                    names.append(name)
+                    description = value.get("PresetDescription")
+                    options.append(
+                        HandBrakeOption(
+                            name,
+                            description if isinstance(description, str) else describe_preset(name),
+                        )
+                    )
                 for child in value.values():
                     collect(child)
             elif isinstance(value, list):
@@ -76,11 +82,8 @@ def handbrake_presets(config: Settings) -> list[HandBrakeOption]:
 
         collect(data)
     except ValueError:
-        names = parse_text_preset_list(output)
-    return [
-        HandBrakeOption(name, describe_preset(name))
-        for name in dict.fromkeys(names)
-    ]
+        options = parse_text_preset_list(output)
+    return list({option.value: option for option in options}.values())
 
 
 def handbrake_encoders(config: Settings) -> list[HandBrakeOption]:
@@ -106,19 +109,39 @@ def handbrake_encoders(config: Settings) -> list[HandBrakeOption]:
     ]
 
 
-def parse_text_preset_list(output: str) -> list[str]:
-    names: list[str] = []
-    in_folder = False
+def parse_text_preset_list(output: str) -> list[HandBrakeOption]:
+    options: list[HandBrakeOption] = []
+    preset_indent: int | None = None
+    current_name: str | None = None
+    current_description: list[str] = []
+
+    def append_current() -> None:
+        if not current_name:
+            return
+        description = " ".join(current_description) or describe_preset(current_name)
+        options.append(HandBrakeOption(current_name, description))
+
     for raw_line in output.splitlines():
         line = raw_line.strip()
         if not line:
             continue
+        indent = len(raw_line) - len(raw_line.lstrip())
         if line.endswith("/"):
-            in_folder = True
+            append_current()
+            current_name = None
+            current_description = []
+            preset_indent = indent + 4
             continue
-        if in_folder and raw_line[:1].isspace() and not line.startswith("["):
-            names.append(line)
-    return names
+        if preset_indent is None or line.startswith("["):
+            continue
+        if indent == preset_indent:
+            append_current()
+            current_name = line
+            current_description = []
+        elif current_name and indent > preset_indent:
+            current_description.append(line)
+    append_current()
+    return options
 
 
 def decode_first_json(output: str) -> object:

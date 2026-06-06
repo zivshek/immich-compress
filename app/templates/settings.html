@@ -25,7 +25,7 @@
         <select name="handbrake_preset" data-described-select="preset-description" required>
           <option value="" {% if not settings.handbrake_preset %}selected{% endif %} disabled>Choose a preset</option>
           {% for option in presets %}
-          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_preset == option.value %}selected{% endif %}>{{ option.value }} - {{ option.description }}</option>
+          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_preset == option.value %}selected{% endif %}>{{ option.value }}</option>
           {% endfor %}
         </select>
         <small id="preset-description">Controls the preset's quality, speed, audio, and container defaults.</small>
@@ -36,7 +36,7 @@
         <select name="handbrake_encoder" data-described-select="encoder-description" required>
           <option value="" {% if not settings.handbrake_encoder %}selected{% endif %} disabled>Choose an encoder</option>
           {% for option in encoders %}
-          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_encoder == option.value %}selected{% endif %}>{{ option.value }} - {{ option.description }}</option>
+          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_encoder == option.value %}selected{% endif %}>{{ option.value }}</option>
           {% endfor %}
         </select>
         <small id="encoder-description">Select CPU encoding or hardware encoding supported by this container.</small>
