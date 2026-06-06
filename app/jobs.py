@@ -73,6 +73,7 @@ def process_asset(asset_id: str, batch_id: str | None = None) -> None:
     client = ImmichClient(config)
     asset = client.find_asset_by_id(asset_id)
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
+    db.update_job(asset_id, process_started_at=db.utc_now())
     if is_legacy_processed_filename(original_name):
         current_size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
         db.upsert_job(asset_id, original_name, "processed", batch_id=batch_id)

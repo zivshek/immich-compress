@@ -46,6 +46,7 @@ def init_db() -> None:
               error TEXT,
               logs TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
+              process_started_at TEXT,
               updated_at TEXT NOT NULL
             )
             """
@@ -67,6 +68,14 @@ def init_db() -> None:
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
+        ensure_column(db, "compression_jobs", "process_started_at", "TEXT")
+        db.execute(
+            """
+            UPDATE compression_jobs
+            SET process_started_at = created_at
+            WHERE process_started_at IS NULL
+            """
+        )
         repair_processed_metrics(db)
 
 
@@ -123,7 +132,7 @@ def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
             db.execute(
                 """
                 SELECT * FROM compression_jobs
-                ORDER BY updated_at DESC, id DESC
+                ORDER BY process_started_at DESC, id DESC
                 LIMIT ?
                 """,
                 (limit,),
@@ -183,7 +192,7 @@ def batch_jobs(batch_id: str) -> list[sqlite3.Row]:
             """
             SELECT * FROM compression_jobs
             WHERE batch_id = ?
-            ORDER BY updated_at DESC, id DESC
+            ORDER BY process_started_at DESC, id DESC
             """,
             (batch_id,),
         ).fetchall()

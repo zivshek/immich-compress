@@ -26,7 +26,13 @@
           {% for row in rows %}
           <tr>
             <td><input class="check-cell" name="asset_ids" type="checkbox" value="{{ row.asset.id }}"></td>
-            <td><a class="filename" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ row.asset.id }}" target="_blank" rel="noreferrer">{{ row.asset.originalFileName }}</a></td>
+            <td>
+              {% if row.job %}
+              <a class="filename" href="/jobs/{{ row.job.asset_id }}">{{ row.asset.originalFileName }}</a>
+              {% else %}
+              <span class="filename">{{ row.asset.originalFileName }}</span>
+              {% endif %}
+            </td>
             <td>{{ row.date }}</td>
             <td>{{ row.size or "-" }}</td>
             <td>{{ row.resolution }}</td>
