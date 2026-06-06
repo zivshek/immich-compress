@@ -36,6 +36,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                           error TEXT,
                           logs TEXT NOT NULL DEFAULT '',
                           created_at TEXT NOT NULL,
+                          queued_at TEXT,
                           process_started_at TEXT,
                           updated_at TEXT
                         )
@@ -52,6 +53,10 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.init_db()
                 db.upsert_job("original-id", "video.mp4", "processed")
                 db.update_job("original-id", target_asset_id="copied-id")
+                db.update_job("original-id", queued_at="2020-01-01T00:00:00+00:00")
+                db.upsert_job("original-id", "video.mp4", "compressing")
+                stable_queued_at = db.get_job("original-id")["queued_at"]
+                db.upsert_job("pending-id", "pending.mp4")
 
                 with closing(sqlite3.connect(db.settings.database_path)) as connection:
                     columns = {
@@ -66,8 +71,11 @@ class DatabaseMigrationTest(unittest.TestCase):
 
                 self.assertNotIn("batch_id", columns)
                 self.assertNotIn("updated_at", columns)
+                self.assertIn("queued_at", columns)
                 self.assertIsNone(batch_table)
                 self.assertEqual(db.get_job_for_asset("copied-id")["asset_id"], "original-id")
+                self.assertEqual(stable_queued_at, "2020-01-01T00:00:00+00:00")
+                self.assertEqual(db.list_jobs(2)[0]["asset_id"], "pending-id")
             finally:
                 db.settings = original_settings
 

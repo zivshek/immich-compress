@@ -43,6 +43,7 @@ def init_db() -> None:
               error TEXT,
               logs TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
+              queued_at TEXT,
               process_started_at TEXT
             )
             """
@@ -53,11 +54,19 @@ def init_db() -> None:
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
+        ensure_column(db, "compression_jobs", "queued_at", "TEXT")
         ensure_column(db, "compression_jobs", "process_started_at", "TEXT")
         drop_column(db, "compression_jobs", "updated_at")
         drop_column(db, "compression_jobs", "batch_id")
         drop_column(db, "app_settings", "updated_at")
         db.execute("DROP TABLE IF EXISTS processing_batches")
+        db.execute(
+            """
+            UPDATE compression_jobs
+            SET queued_at = COALESCE(process_started_at, created_at)
+            WHERE queued_at IS NULL
+            """
+        )
         db.execute(
             """
             UPDATE compression_jobs
@@ -127,7 +136,7 @@ def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
             db.execute(
                 """
                 SELECT * FROM compression_jobs
-                ORDER BY process_started_at DESC, id DESC
+                ORDER BY queued_at DESC, id DESC
                 LIMIT ?
                 """,
                 (limit,),
@@ -220,13 +229,17 @@ def upsert_job(
     with connect() as db:
         db.execute(
             """
-            INSERT INTO compression_jobs(asset_id, original_file_name, state, created_at)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO compression_jobs(asset_id, original_file_name, state, created_at, queued_at)
+            VALUES(?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET
               original_file_name = excluded.original_file_name,
-              state = excluded.state
+              state = excluded.state,
+              queued_at = CASE
+                WHEN excluded.state = 'pending' THEN excluded.queued_at
+                ELSE compression_jobs.queued_at
+              END
             """,
-            (asset_id, original_file_name, state, now),
+            (asset_id, original_file_name, state, now, now),
         )
 
 
