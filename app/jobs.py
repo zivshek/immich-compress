@@ -8,7 +8,7 @@ from queue import Empty, Queue
 
 from app import db
 from app.compression import compress_with_handbrake
-from app.config import effective_settings, settings
+from app.config import effective_settings
 from app.immich import ImmichClient
 
 
@@ -34,7 +34,7 @@ class JobQueue:
         for job in db.list_jobs_by_states({"pending", "compressing", "copying"}):
             mark_canceled(job["asset_id"], "Canceled after the app restarted.")
         self.started = True
-        for index in range(max(1, settings.max_concurrent_jobs)):
+        for index in range(max(1, effective_settings().max_concurrent_jobs)):
             thread = threading.Thread(target=self._worker, name=f"compress-worker-{index}", daemon=True)
             thread.start()
 

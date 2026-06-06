@@ -20,6 +20,8 @@ class ImmichClient:
         return self.config.immich_url.rstrip("/") + "/api/" + path.lstrip("/")
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
+        if not self.config.immich_url or not self.config.immich_api_key:
+            raise RuntimeError("Configure the Immich URL and API key in Settings")
         response = self.session.request(method, self.api_url(path), timeout=60, **kwargs)
         response.raise_for_status()
         if not response.content:
@@ -30,7 +32,7 @@ class ImmichClient:
         try:
             self.request("GET", "server/about")
             return True
-        except requests.RequestException:
+        except (requests.RequestException, RuntimeError):
             return False
 
     def search_assets_by_stem(self, stem: str, size: int = 50) -> list[dict[str, Any]]:

@@ -26,9 +26,13 @@ def normalize_mode(value: str) -> str:
     return "review"
 
 
+def normalize_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
-    immich_url: str = os.environ.get("IMMICH_URL", "http://immich-server:2283")
+    immich_url: str = os.environ.get("IMMICH_URL", "")
     immich_api_key: str = os.environ.get("IMMICH_API_KEY", "")
     data_dir: Path = Path(os.environ.get("DATA_DIR", "/data"))
     upload_root: Path = Path(os.environ.get("IMMICH_UPLOAD_ROOT", "/immich-upload"))
@@ -36,8 +40,8 @@ class Settings:
     ffmpeg: str = os.environ.get("FFMPEG", "ffmpeg")
     ffprobe: str = os.environ.get("FFPROBE", "ffprobe")
     exiftool: str = os.environ.get("EXIFTOOL", "exiftool")
-    handbrake_preset: str = os.environ.get("HANDBRAKE_PRESET", "Fast 2160p60 4K HEVC")
-    handbrake_encoder: str = os.environ.get("HANDBRAKE_ENCODER", "nvenc_h265")
+    handbrake_preset: str = os.environ.get("HANDBRAKE_PRESET", "")
+    handbrake_encoder: str = os.environ.get("HANDBRAKE_ENCODER", "")
     poll_interval_seconds: int = env_int("POLL_INTERVAL_SECONDS", 300)
     auto_process_new_uploads: bool = env_bool("AUTO_PROCESS_NEW_UPLOADS", False)
     max_concurrent_jobs: int = env_int("MAX_CONCURRENT_JOBS", 1)
@@ -59,7 +63,16 @@ def effective_settings() -> Settings:
 
     return replace(
         settings,
+        immich_url=db.get_setting("immich_url", settings.immich_url),
+        immich_api_key=db.get_setting("immich_api_key", settings.immich_api_key),
         handbrake_preset=db.get_setting("handbrake_preset", settings.handbrake_preset),
         handbrake_encoder=db.get_setting("handbrake_encoder", settings.handbrake_encoder),
+        max_concurrent_jobs=max(
+            1,
+            int(db.get_setting("max_concurrent_jobs", str(settings.max_concurrent_jobs))),
+        ),
+        upscale_to_4k=normalize_bool(
+            db.get_setting("upscale_to_4k", str(settings.upscale_to_4k))
+        ),
         replacement_mode=normalize_mode(db.get_setting("replacement_mode", settings.replacement_mode)),
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Query, Request
@@ -13,7 +14,7 @@ from app import db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
 from app.jobs import job_queue, mark_processed, reject_job as reject_work_job, upload_copy
-from app.tools import tool_statuses
+from app.tools import HandBrakeOption, handbrake_encoders, handbrake_presets, tool_statuses
 
 
 app = FastAPI(title="Immich Compress")
@@ -166,6 +167,38 @@ def remembered_video_page(request: Request) -> int:
         return 1
 
 
+def include_current_option(
+    options: list[HandBrakeOption],
+    current: str,
+) -> list[HandBrakeOption]:
+    if current and all(option.value != current for option in options):
+        return [
+            HandBrakeOption(current, "Configured value; not reported by this HandBrake installation."),
+            *options,
+        ]
+    return options
+
+
+def settings_page_context(message: str | None = None) -> dict[str, object]:
+    current = effective_settings()
+    return {
+        "settings": current,
+        "message": message,
+        "presets": include_current_option(handbrake_presets(current), current.handbrake_preset),
+        "encoders": include_current_option(handbrake_encoders(current), current.handbrake_encoder),
+    }
+
+
+def processing_is_configured() -> bool:
+    current = effective_settings()
+    return bool(
+        current.immich_url
+        and current.immich_api_key
+        and current.handbrake_preset
+        and current.handbrake_encoder
+    )
+
+
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
@@ -192,34 +225,78 @@ def dashboard(request: Request):
 
 @app.get("/settings")
 def settings_page(request: Request):
-    current_settings = effective_settings()
     return templates.TemplateResponse(
         request,
         "settings.html",
-        {
-            "settings": current_settings,
-            "message": None,
-        },
+        settings_page_context(),
     )
 
 
 @app.post("/settings")
 def save_settings(
     request: Request,
+    immich_url: str = Form(...),
+    immich_api_key: str = Form(...),
     handbrake_preset: str = Form(...),
     handbrake_encoder: str = Form(...),
+    max_concurrent_jobs: int = Form(...),
+    upscale_to_4k: str | None = Form(default=None),
     replacement_mode: str = Form(...),
 ):
+    immich_url = immich_url.strip().rstrip("/")
+    immich_api_key = immich_api_key.strip()
+    current = effective_settings()
+    saved_api_key = immich_api_key or current.immich_api_key
+    submitted = replace(
+        current,
+        immich_url=immich_url,
+        immich_api_key=saved_api_key,
+        handbrake_preset=handbrake_preset,
+        handbrake_encoder=handbrake_encoder,
+        max_concurrent_jobs=max_concurrent_jobs,
+        upscale_to_4k=upscale_to_4k == "true",
+        replacement_mode=normalize_mode(replacement_mode),
+    )
+    presets = include_current_option(handbrake_presets(current), current.handbrake_preset)
+    encoders = include_current_option(handbrake_encoders(current), current.handbrake_encoder)
+    errors = []
+    if not immich_url:
+        errors.append("Immich URL is required.")
+    elif not immich_url.startswith(("http://", "https://")):
+        errors.append("Immich URL must begin with http:// or https://.")
+    if not saved_api_key:
+        errors.append("Immich API key is required.")
+    if handbrake_preset not in {option.value for option in presets}:
+        errors.append("Choose a preset reported by HandBrakeCLI.")
+    if handbrake_encoder not in {option.value for option in encoders}:
+        errors.append("Choose an encoder reported by HandBrakeCLI.")
+    if not 1 <= max_concurrent_jobs <= 8:
+        errors.append("Concurrent jobs must be between 1 and 8.")
+    if errors:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "settings": submitted,
+                "message": " ".join(errors),
+                "presets": presets,
+                "encoders": encoders,
+            },
+            status_code=400,
+        )
+
+    db.set_setting("immich_url", immich_url)
+    if immich_api_key:
+        db.set_setting("immich_api_key", immich_api_key)
     db.set_setting("handbrake_preset", handbrake_preset)
     db.set_setting("handbrake_encoder", handbrake_encoder)
+    db.set_setting("max_concurrent_jobs", str(max_concurrent_jobs))
+    db.set_setting("upscale_to_4k", str(upscale_to_4k == "true"))
     db.set_setting("replacement_mode", normalize_mode(replacement_mode))
     return templates.TemplateResponse(
         request,
         "settings.html",
-        {
-            "settings": effective_settings(),
-            "message": "Settings saved. New jobs will use these values.",
-        },
+        settings_page_context("Settings saved. New jobs will use these values."),
     )
 
 
@@ -235,6 +312,8 @@ def jobs_page(request: Request):
 
 @app.get("/videos")
 def videos_page(request: Request, page: int | None = Query(default=None, ge=1)):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
     client = ImmichClient()
     page_size = 10
     if page is None:
@@ -291,6 +370,8 @@ def videos_page(request: Request, page: int | None = Query(default=None, ge=1)):
 
 @app.post("/jobs/process-asset")
 def process_asset(asset: str = Form(...)):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
     job_queue.enqueue(asset)
     return RedirectResponse("/jobs", status_code=303)
 
@@ -300,6 +381,8 @@ def process_selected(
     asset_ids: list[str] = Form(default=[]),
     page: int = Form(default=1),
 ):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
     redirect_url = f"/videos?page={max(1, page)}"
     if not asset_ids:
         return RedirectResponse(redirect_url, status_code=303)
@@ -312,6 +395,8 @@ def process_selected(
 
 @app.post("/videos/process-all")
 def process_all_videos():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
     client = ImmichClient()
     all_assets: list[dict] = []
     page = 1

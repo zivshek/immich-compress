@@ -156,6 +156,8 @@ def compress_with_handbrake(
     progress_callback: Callable[[str, float | None, str | None], None] | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> CompressionResult:
+    if not config.handbrake_preset or not config.handbrake_encoder:
+        raise RuntimeError("Choose a HandBrake preset and encoder in Settings before processing videos")
     if not is_supported_video(input_path):
         raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
 

@@ -401,11 +401,51 @@ th {
   padding: 18px;
 }
 
+.settings-form fieldset {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0 0 18px;
+}
+
+.settings-form legend {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding: 0;
+}
+
+.settings-form fieldset:last-of-type {
+  border-bottom: 0;
+}
+
 label {
   color: var(--muted);
   display: grid;
   font-size: 0.9rem;
   gap: 6px;
+}
+
+label small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.toggle-field {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.toggle-field input {
+  margin-top: 3px;
+  min-height: auto;
+  width: auto;
+}
+
+.toggle-field small {
+  grid-column: 2;
 }
 
 .notice {

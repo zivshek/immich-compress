@@ -5,14 +5,6 @@ services:
     restart: unless-stopped
     ports:
       - "8097:8097"
-    environment:
-      # Use a URL this container can reach, for example:
-      # IMMICH_URL: "http://192.168.1.50:2283"
-      IMMICH_URL: "http://YOUR-IMMICH-IP:2283"
-      IMMICH_API_KEY: "${IMMICH_COMPRESS_API_KEY}"
-      HANDBRAKE_PRESET: "Fast 2160p60 4K HEVC"
-      HANDBRAKE_ENCODER: "nvenc_h265"
-      REPLACEMENT_MODE: "review"
     volumes:
       - /mnt/Apps/AppData/immich-compress:/data
 
@@ -20,6 +12,6 @@ services:
     # Uncomment this for Compose deployments that support the `gpus` key.
     # gpus: all
 
-    # Intel QSV / VAAPI: uncomment and set HANDBRAKE_ENCODER to qsv_h265 or vaapi_h265.
+    # Intel QSV / VAAPI: uncomment and choose a QSV or VA-API encoder in Settings.
     # devices:
     #   - /dev/dri:/dev/dri

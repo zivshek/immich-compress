@@ -4,30 +4,79 @@
   <h1>Settings</h1>
   {% if message %}<p class="notice">{{ message }}</p>{% endif %}
   <form method="post" class="settings-form">
-    <label>
-      Immich URL
-      <input value="{{ settings.immich_url }}" disabled>
-    </label>
-    <label>
-      API key
-      <input value="{{ 'Configured' if settings.immich_api_key else 'Missing' }}" disabled>
-    </label>
-    <label>
-      HandBrake preset
-      <input name="handbrake_preset" value="{{ settings.handbrake_preset }}">
-    </label>
-    <label>
-      HandBrake encoder
-      <input name="handbrake_encoder" value="{{ settings.handbrake_encoder }}">
-    </label>
-    <label>
-      Mode
-      <select name="replacement_mode">
-        <option value="review" {% if settings.replacement_mode == "review" %}selected{% endif %}>Review</option>
-        <option value="auto" {% if settings.replacement_mode == "auto" %}selected{% endif %}>Auto</option>
-      </select>
-    </label>
+    <fieldset>
+      <legend>Immich Connection</legend>
+      <label>
+        Immich URL
+        <input name="immich_url" type="url" value="{{ settings.immich_url }}" placeholder="http://192.168.1.50:2283" required>
+        <small>Address this container can use to reach Immich. A LAN address is usually simplest for standalone deployments.</small>
+      </label>
+      <label>
+        API Key
+        <input name="immich_api_key" type="password" value="" placeholder="{{ 'Configured - leave blank to keep' if settings.immich_api_key else 'Paste an Immich API key' }}" autocomplete="new-password">
+        <small>Used to read, upload, copy metadata, and trash original assets. New keys are stored in the app database under /data; leave blank to keep the current key.</small>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Compression</legend>
+      <label>
+        HandBrake Preset
+        <select name="handbrake_preset" data-described-select="preset-description" required>
+          <option value="" {% if not settings.handbrake_preset %}selected{% endif %} disabled>Choose a preset</option>
+          {% for option in presets %}
+          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_preset == option.value %}selected{% endif %}>{{ option.value }} - {{ option.description }}</option>
+          {% endfor %}
+        </select>
+        <small id="preset-description">Controls the preset's quality, speed, audio, and container defaults.</small>
+        {% if not presets %}<small class="error">No presets were reported by HandBrakeCLI.</small>{% endif %}
+      </label>
+      <label>
+        Video Encoder
+        <select name="handbrake_encoder" data-described-select="encoder-description" required>
+          <option value="" {% if not settings.handbrake_encoder %}selected{% endif %} disabled>Choose an encoder</option>
+          {% for option in encoders %}
+          <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_encoder == option.value %}selected{% endif %}>{{ option.value }} - {{ option.description }}</option>
+          {% endfor %}
+        </select>
+        <small id="encoder-description">Select CPU encoding or hardware encoding supported by this container.</small>
+        {% if not encoders %}<small class="error">No encoders were reported by HandBrakeCLI.</small>{% endif %}
+      </label>
+      <label>
+        Concurrent Jobs
+        <input name="max_concurrent_jobs" type="number" min="1" max="8" step="1" value="{{ settings.max_concurrent_jobs }}" required>
+        <small>Number of videos encoded at the same time. Higher values require more CPU, GPU, memory, and disk bandwidth. Applied after restarting the container.</small>
+      </label>
+      <label class="toggle-field">
+        <input name="upscale_to_4k" type="checkbox" value="true" {% if settings.upscale_to_4k %}checked{% endif %}>
+        Upscale smaller videos toward 4K
+        <small>Off preserves the source resolution. Enabling this increases processing time and usually increases file size.</small>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Workflow</legend>
+      <label>
+        Mode
+        <select name="replacement_mode" data-described-select="mode-description">
+          <option value="review" data-description="Compress and wait for you to accept or reject the result." {% if settings.replacement_mode == "review" %}selected{% endif %}>Review - approve each result</option>
+          <option value="auto" data-description="Upload the compressed copy and trash the original automatically." {% if settings.replacement_mode == "auto" %}selected{% endif %}>Auto - replace without review</option>
+        </select>
+        <small id="mode-description"></small>
+      </label>
+    </fieldset>
+
     <button type="submit">Save Settings</button>
   </form>
 </section>
+<script>
+  document.querySelectorAll("[data-described-select]").forEach((select) => {
+    const description = document.getElementById(select.dataset.describedSelect);
+    const updateDescription = () => {
+      description.textContent = select.selectedOptions[0]?.dataset.description || description.textContent;
+    };
+    select.addEventListener("change", updateDescription);
+    updateDescription();
+  });
+</script>
 {% endblock %}

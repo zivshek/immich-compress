@@ -6,15 +6,8 @@ services:
     ports:
       - "8097:8097"
     environment:
-      # Use a URL this container can reach. If the container is not attached to
-      # Immich's Docker network, use your LAN URL, for example:
-      # IMMICH_URL: "http://192.168.1.50:2283"
-      IMMICH_URL: "http://immich-server:2283"
-      IMMICH_API_KEY: "${IMMICH_COMPRESS_API_KEY}"
       IMMICH_UPLOAD_ROOT: "/immich-upload"
-      HANDBRAKE_PRESET: "Fast 2160p60 4K HEVC"
-      HANDBRAKE_ENCODER: "nvenc_h265"
-      REPLACEMENT_MODE: "review"
+      # Connection and compression settings are configured in the web UI.
     volumes:
       - ./immich-compress-data:/data
       - ${UPLOAD_LOCATION}:/immich-upload
@@ -22,6 +15,6 @@ services:
     # NVIDIA NVENC: requires NVIDIA drivers and NVIDIA Container Toolkit on the host.
     # gpus: all
 
-    # Intel QSV / VAAPI:
+    # Intel QSV / VAAPI: choose the matching encoder in Settings.
     # devices:
     #   - /dev/dri:/dev/dri

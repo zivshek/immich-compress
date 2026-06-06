@@ -40,12 +40,8 @@ The Docker image ships with the media tooling used by the app:
 - `ffmpeg`
 - `ffprobe`
 
-Copy `docker-compose.example.yml` into your Immich compose folder and adjust:
-
-- `IMMICH_COMPRESS_API_KEY`
-- `UPLOAD_LOCATION`
-- `HANDBRAKE_ENCODER`
-- GPU/device mappings if you want hardware encoding inside the container
+Copy `docker-compose.example.yml` into your Immich compose folder and adjust the volume
+paths and GPU/device mappings if you want hardware encoding inside the container.
 
 Then run:
 
@@ -55,13 +51,9 @@ docker compose up -d immich-compress
 
 ### Standalone Docker Compose
 
-You can run Immich Compress from its own folder without editing Immich's compose file. The current review-mode workflow downloads originals through the Immich API, so it only needs an API key and persistent `/data`.
-
-Create an Immich API key, then create a `.env` file next to your compose file:
-
-```bash
-IMMICH_COMPRESS_API_KEY=your-api-key
-```
+You can run Immich Compress from its own folder without editing Immich's compose file. The
+workflow downloads originals through the Immich API, so the container only needs network
+access to Immich and persistent `/data`.
 
 For TrueNAS, use the published-image example so the app data stays under `/mnt/Apps/AppData/immich-compress` and you do not need the source repo on the server:
 
@@ -72,7 +64,13 @@ docker compose up -d
 
 Open `http://your-truenas-ip:8097`.
 
-Set `IMMICH_URL` to your Immich LAN URL, for example `http://192.168.1.50:2283`.
+Open Settings and configure:
+
+- the Immich URL reachable from the container, for example `http://192.168.1.50:2283`
+- an Immich API key
+- a preset and encoder detected from the bundled HandBrakeCLI
+- concurrency and optional 4K upscaling behavior
+- review or automatic replacement mode
 
 If you want to build locally from source instead, use `docker-compose.example.yml` and run:
 
@@ -80,15 +78,16 @@ If you want to build locally from source instead, use `docker-compose.example.ym
 docker compose up -d --build
 ```
 
-## Important settings
+## Settings
 
-- `IMMICH_URL`: Immich server URL from inside Docker, usually `http://immich-server:2283`
-- `IMMICH_API_KEY`: API key created in Immich
-- `HANDBRAKE_PRESET`: default `Fast 2160p60 4K HEVC`
-- `HANDBRAKE_ENCODER`: default `nvenc_h265`
-- `HANDBRAKE_CLI`: default `HandBrakeCLI`, already available in the Docker image
-- `EXIFTOOL`: default `exiftool`, already available in the Docker image
-- `REPLACEMENT_MODE`: default `review`; valid values are `review` and `auto`
+Connection, preset, encoder, concurrency, upscaling, and workflow mode are configured from the Settings page and
+stored in `/data/immich-compress.sqlite`. HandBrake presets and encoders are detected from
+the bundled CLI and presented as described dropdowns. Environment variables remain optional
+bootstrap fallbacks for existing or automated deployments, but fresh installs have no
+hard-coded preset or encoder.
+
+Tool path variables such as `HANDBRAKE_CLI` and `EXIFTOOL` remain available for advanced
+deployments. The commands are already included in the published Docker image.
 
 ## GPU encoding
 
@@ -96,7 +95,7 @@ The app ships with HandBrakeCLI, but hardware encoding still needs the host GPU 
 
 ### NVIDIA NVENC
 
-The default encoder is `nvenc_h265`, matching the original script. For this to work, the Docker host must have:
+To use an NVENC encoder, the Docker host must have:
 
 - NVIDIA driver installed
 - NVIDIA Container Toolkit installed/configured
@@ -109,7 +108,6 @@ services:
   immich-compress:
     gpus: all
     environment:
-      HANDBRAKE_ENCODER: "nvenc_h265"
       NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
 ```
 
@@ -119,27 +117,20 @@ On TrueNAS Scale, enable GPU passthrough/allocation for the Immich Compress app/
 
 ### Intel Quick Sync / VAAPI
 
-For Intel hardware encoding, pass `/dev/dri` into the container and change the encoder:
+For Intel hardware encoding, pass `/dev/dri` into the container and choose a QSV encoder in Settings:
 
 ```yaml
 services:
   immich-compress:
     devices:
       - /dev/dri:/dev/dri
-    environment:
-      HANDBRAKE_ENCODER: "qsv_h265"
 ```
 
 If QSV is not available, try `vaapi_h265` if your HandBrake build and host GPU support it.
 
 ### CPU fallback
 
-For testing without GPU passthrough, set:
-
-```yaml
-HANDBRAKE_ENCODER: "x265"
-```
-
+For testing without GPU passthrough, choose a software encoder such as `x265` in Settings.
 This will be slower, but it confirms the rest of the workflow is healthy.
 
 ## Accepting reviewed files

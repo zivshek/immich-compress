@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from app import db
+from app.config import effective_settings
 
 
 class DatabaseMigrationTest(unittest.TestCase):
@@ -57,6 +58,11 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.upsert_job("original-id", "video.mp4", "compressing")
                 stable_queued_at = db.get_job("original-id")["queued_at"]
                 db.upsert_job("pending-id", "pending.mp4")
+                db.set_setting("immich_url", "http://immich:2283")
+                db.set_setting("immich_api_key", "secret")
+                db.set_setting("max_concurrent_jobs", "3")
+                db.set_setting("upscale_to_4k", "true")
+                configured = effective_settings()
 
                 with closing(sqlite3.connect(db.settings.database_path)) as connection:
                     columns = {
@@ -76,6 +82,10 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(db.get_job_for_asset("copied-id")["asset_id"], "original-id")
                 self.assertEqual(stable_queued_at, "2020-01-01T00:00:00+00:00")
                 self.assertEqual(db.list_jobs(2)[0]["asset_id"], "pending-id")
+                self.assertEqual(configured.immich_url, "http://immich:2283")
+                self.assertEqual(configured.immich_api_key, "secret")
+                self.assertEqual(configured.max_concurrent_jobs, 3)
+                self.assertTrue(configured.upscale_to_4k)
             finally:
                 db.settings = original_settings
 
