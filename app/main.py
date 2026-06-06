@@ -138,6 +138,34 @@ def enrich_video_assets(videos: list[dict]) -> list[dict]:
         return list(executor.map(fetch, videos))
 
 
+def find_next_unprocessed_video_page(
+    client: ImmichClient,
+    page_size: int = 10,
+    scan_size: int = 100,
+) -> int | None:
+    scanned = 0
+    scan_page = 1
+    while True:
+        videos, total = client.search_videos(page=scan_page, size=scan_size)
+        if not videos:
+            return None
+        jobs_by_asset = db.list_jobs_for_assets([video["id"] for video in videos])
+        for index, video in enumerate(videos):
+            if video["id"] not in jobs_by_asset:
+                return ((scanned + index) // page_size) + 1
+        scanned += len(videos)
+        if len(videos) < scan_size or (total is not None and scanned >= total):
+            return None
+        scan_page += 1
+
+
+def remembered_video_page(request: Request) -> int:
+    try:
+        return max(1, int(request.cookies.get("immich_compress_video_page", "1")))
+    except ValueError:
+        return 1
+
+
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
@@ -206,9 +234,16 @@ def jobs_page(request: Request):
 
 
 @app.get("/videos")
-def videos_page(request: Request, page: int = Query(1, ge=1)):
+def videos_page(request: Request, page: int | None = Query(default=None, ge=1)):
     client = ImmichClient()
     page_size = 10
+    if page is None:
+        target_page = find_next_unprocessed_video_page(client, page_size)
+        return RedirectResponse(
+            f"/videos?page={target_page or remembered_video_page(request)}",
+            status_code=303,
+        )
+
     videos, total = client.search_videos(page=page, size=page_size)
     videos = enrich_video_assets(videos)
     jobs_by_asset = db.list_jobs_for_assets([video["id"] for video in videos])
@@ -231,7 +266,7 @@ def videos_page(request: Request, page: int = Query(1, ge=1)):
                 "date": video.get("localDateTime") or video.get("fileCreatedAt") or "",
             }
         )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "videos.html",
         {
@@ -244,6 +279,14 @@ def videos_page(request: Request, page: int = Query(1, ge=1)):
             "has_previous": page > 1,
         },
     )
+    response.set_cookie(
+        "immich_compress_video_page",
+        str(page),
+        max_age=31536000,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 @app.post("/jobs/process-asset")
