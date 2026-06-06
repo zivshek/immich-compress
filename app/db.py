@@ -92,7 +92,7 @@ def get_dashboard_stats() -> sqlite3.Row:
             """
             SELECT
               COUNT(*) AS total_jobs,
-              SUM(CASE WHEN state IN ('copied', 'copied-and-trashed', 'replaced') THEN 1 ELSE 0 END)
+              SUM(CASE WHEN state IN ('processed', 'copied', 'copied-and-trashed', 'replaced') THEN 1 ELSE 0 END)
                 AS converted_jobs,
               SUM(CASE WHEN state = 'review' THEN 1 ELSE 0 END) AS review_jobs,
               SUM(CASE WHEN state IN ('failed', 'copy-failed', 'trash-failed', 'replace-failed') THEN 1 ELSE 0 END)

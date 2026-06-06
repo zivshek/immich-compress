@@ -105,6 +105,9 @@
     <form method="post" action="/jobs/{{ job.asset_id }}/trash-original">
       <button class="danger-button" type="submit" {% if not job.target_asset_id %}disabled{% endif %}>Trash Original</button>
     </form>
+    <form method="post" action="/jobs/{{ job.asset_id }}/mark-processed">
+      <button class="secondary-button" type="submit">Mark Processed</button>
+    </form>
     <form method="post" action="/jobs/{{ job.asset_id }}/reject">
       <button class="danger-button" type="submit">Reject</button>
     </form>

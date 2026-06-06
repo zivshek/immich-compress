@@ -14,6 +14,7 @@ from app.immich import ImmichClient
 ASSET_ID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+LEGACY_PROCESSED_SUFFIX = "-hbed"
 
 
 class JobQueue:
@@ -58,6 +59,20 @@ def process_asset(asset_id: str) -> None:
     client = ImmichClient(config)
     asset = client.find_asset_by_id(asset_id)
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
+    if is_legacy_processed_filename(original_name):
+        db.upsert_job(asset_id, original_name, "processed")
+        db.update_job(
+            asset_id,
+            progress_stage="Already processed",
+            progress_percent=100,
+            logs=(
+                f"Skipped compression because {original_name} already ends with "
+                f"{LEGACY_PROCESSED_SUFFIX}."
+            ),
+            error=None,
+        )
+        return
+
     db.upsert_job(asset_id, original_name, "compressing")
 
     work_dir = config.data_dir / "work" / asset_id
@@ -163,6 +178,27 @@ def trash_original_asset(asset_id: str) -> None:
         logs=(job["logs"] or "")
         + f"\nTrashed original asset after uploading compressed asset {job['target_asset_id']}.",
     )
+
+
+def mark_processed(asset_id: str) -> None:
+    job = db.get_job(asset_id)
+    if not job:
+        raise RuntimeError("Job not found")
+    size = job["original_size"] or job["compressed_size"]
+    db.update_job(
+        asset_id,
+        state="processed",
+        compressed_size=size,
+        saved_bytes=0,
+        progress_stage="Already processed",
+        progress_percent=100,
+        error=None,
+        logs=(job["logs"] or "") + "\nMarked as already processed.",
+    )
+
+
+def is_legacy_processed_filename(file_name: str) -> bool:
+    return Path(file_name).stem.lower().endswith(LEGACY_PROCESSED_SUFFIX)
 
 
 job_queue = JobQueue()

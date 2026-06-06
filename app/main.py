@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
-from app.jobs import job_queue, trash_original_asset, upload_copy
+from app.jobs import job_queue, mark_processed, trash_original_asset, upload_copy
 from app.tools import tool_statuses
 
 
@@ -199,6 +199,17 @@ def trash_original_job(asset_id: str):
         trash_original_asset(asset_id)
     except Exception as exc:
         db.update_job(asset_id, state="trash-failed", error=str(exc))
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
+
+@app.post("/jobs/{asset_id}/mark-processed")
+def mark_processed_job(asset_id: str):
+    if not db.get_job(asset_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        mark_processed(asset_id)
+    except Exception as exc:
+        db.update_job(asset_id, state="failed", error=str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

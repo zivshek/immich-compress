@@ -169,6 +169,11 @@ button:disabled {
   border-color: var(--danger);
 }
 
+.secondary-button {
+  background: transparent;
+  color: var(--accent);
+}
+
 .table-wrap {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -226,6 +231,11 @@ th {
 }
 
 .state-accepted {
+  background: #dcefea;
+  color: var(--accent-strong);
+}
+
+.state-processed {
   background: #dcefea;
   color: var(--accent-strong);
 }
