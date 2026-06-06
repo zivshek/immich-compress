@@ -137,10 +137,19 @@ def list_jobs_for_assets(asset_ids: list[str]) -> dict[str, sqlite3.Row]:
     placeholders = ",".join("?" for _ in asset_ids)
     with connect() as db:
         rows = db.execute(
-            f"SELECT * FROM compression_jobs WHERE asset_id IN ({placeholders})",
-            asset_ids,
+            f"""
+            SELECT * FROM compression_jobs
+            WHERE asset_id IN ({placeholders})
+               OR target_asset_id IN ({placeholders})
+            """,
+            [*asset_ids, *asset_ids],
         ).fetchall()
-        return {row["asset_id"]: row for row in rows}
+        result = {}
+        for row in rows:
+            result[row["asset_id"]] = row
+            if row["target_asset_id"]:
+                result[row["target_asset_id"]] = row
+        return result
 
 
 def create_batch(total_jobs: int) -> str:

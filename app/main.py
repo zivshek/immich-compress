@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Query, Request
@@ -98,6 +99,45 @@ def format_bytes(value: object) -> str:
     return f"{size:.1f} {units[unit]}"
 
 
+def asset_size_bytes(asset: dict) -> object | None:
+    exif = asset.get("exifInfo") or {}
+    return (
+        asset.get("originalFileSize")
+        or asset.get("fileSizeInByte")
+        or exif.get("fileSizeInByte")
+        or exif.get("fileSize")
+    )
+
+
+def asset_resolution(asset: dict) -> str:
+    exif = asset.get("exifInfo") or {}
+    width = (
+        asset.get("width")
+        or exif.get("exifImageWidth")
+        or exif.get("imageWidth")
+    )
+    height = (
+        asset.get("height")
+        or exif.get("exifImageHeight")
+        or exif.get("imageHeight")
+    )
+    if width and height:
+        return f"{width} x {height}"
+    return "-"
+
+
+def enrich_video_assets(videos: list[dict]) -> list[dict]:
+    def fetch(video: dict) -> dict:
+        try:
+            detail = ImmichClient().find_asset_by_id(video["id"])
+            return {**video, **detail}
+        except Exception:
+            return video
+
+    with ThreadPoolExecutor(max_workers=min(5, len(videos) or 1)) as executor:
+        return list(executor.map(fetch, videos))
+
+
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
@@ -170,16 +210,24 @@ def videos_page(request: Request, page: int = Query(1, ge=1)):
     client = ImmichClient()
     page_size = 10
     videos, total = client.search_videos(page=page, size=page_size)
+    videos = enrich_video_assets(videos)
     jobs_by_asset = db.list_jobs_for_assets([video["id"] for video in videos])
     rows = []
     for video in videos:
         job = jobs_by_asset.get(video["id"])
+        is_copied_asset = bool(job and job["target_asset_id"] == video["id"])
+        original_size = job["original_size"] if job and job["original_size"] is not None else None
+        if original_size is None and not is_copied_asset:
+            original_size = asset_size_bytes(video)
+        compressed_size = job["compressed_size"] if job and job["compressed_size"] is not None else None
         rows.append(
             {
                 "asset": video,
                 "job": job,
                 "state": job["state"] if job else "unprocessed",
-                "size": format_bytes(video.get("originalFileSize") or video.get("fileSizeInByte")),
+                "size": format_bytes(original_size),
+                "compressed_size": format_bytes(compressed_size),
+                "resolution": asset_resolution(video),
                 "date": video.get("localDateTime") or video.get("fileCreatedAt") or "",
             }
         )

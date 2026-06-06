@@ -16,7 +16,9 @@
             <th><input class="check-cell" type="checkbox" onclick="document.querySelectorAll('input[name=asset_ids]').forEach(cb => cb.checked = this.checked)"></th>
             <th>File</th>
             <th>Date</th>
-            <th>Size</th>
+            <th>Original Size</th>
+            <th>Resolution</th>
+            <th>Compressed Size</th>
             <th>State</th>
           </tr>
         </thead>
@@ -27,16 +29,18 @@
             <td><a class="filename" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ row.asset.id }}" target="_blank" rel="noreferrer">{{ row.asset.originalFileName }}</a></td>
             <td>{{ row.date }}</td>
             <td>{{ row.size or "-" }}</td>
+            <td>{{ row.resolution }}</td>
+            <td>{{ row.compressed_size or "-" }}</td>
             <td>
               {% if row.job %}
-              <a href="/jobs/{{ row.asset.id }}"><span class="state state-{{ row.state }}">{{ row.state }}</span></a>
+              <a href="/jobs/{{ row.job.asset_id }}"><span class="state state-{{ row.state }}">{{ row.state }}</span></a>
               {% else %}
               <span class="state">unprocessed</span>
               {% endif %}
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="5" class="empty">No videos found.</td></tr>
+          <tr><td colspan="7" class="empty">No videos found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
