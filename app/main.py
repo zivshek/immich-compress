@@ -11,8 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
-from app.jobs import job_queue, mark_processed, reject_job as reject_work_job
-from app.jobs import trash_original_asset, upload_copy
+from app.jobs import job_queue, mark_processed, reject_job as reject_work_job, upload_copy
 from app.tools import tool_statuses
 
 
@@ -290,27 +289,15 @@ def job_file(asset_id: str, kind: str):
 
 
 @app.post("/jobs/{asset_id}/accept")
-def upload_job(asset_id: str):
+def accept_job(asset_id: str):
     job = db.get_job(asset_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    current_settings = effective_settings()
 
     try:
-        upload_copy(asset_id, trash_original=current_settings.replacement_mode == "auto")
+        upload_copy(asset_id, trash_original=True)
     except Exception as exc:
         db.update_job(asset_id, state="copy-failed", error=str(exc))
-    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
-
-
-@app.post("/jobs/{asset_id}/trash-original")
-def trash_original_job(asset_id: str):
-    if not db.get_job(asset_id):
-        raise HTTPException(status_code=404, detail="Job not found")
-    try:
-        trash_original_asset(asset_id)
-    except Exception as exc:
-        db.update_job(asset_id, state="trash-failed", error=str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

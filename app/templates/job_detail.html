@@ -117,18 +117,19 @@
     {% if settings.replacement_mode == "auto" %}
     <p class="notice compact">Auto mode uploads the copy and trashes the original after compression.</p>
     {% endif %}
-    <form method="post" action="/jobs/{{ job.asset_id }}/accept">
-      <button type="submit" {% if job.target_asset_id %}disabled{% endif %}>Upload Copy</button>
-    </form>
-    <form method="post" action="/jobs/{{ job.asset_id }}/trash-original">
-      <button class="danger-button" type="submit" {% if not job.target_asset_id %}disabled{% endif %}>Trash Original</button>
-    </form>
-    <form method="post" action="/jobs/{{ job.asset_id }}/mark-processed">
-      <button class="secondary-button" type="submit">Mark Processed</button>
-    </form>
-    <form method="post" action="/jobs/{{ job.asset_id }}/reject">
-      <button class="danger-button" type="submit">Reject</button>
-    </form>
+    {% if job.state not in ["copied-and-trashed", "processed", "rejected"] %}
+      <form method="post" action="/jobs/{{ job.asset_id }}/accept">
+        <button type="submit">Accept</button>
+      </form>
+      {% if "-hbed" in job.original_file_name.lower() %}
+      <form method="post" action="/jobs/{{ job.asset_id }}/mark-processed">
+        <button class="secondary-button" type="submit">Mark Processed</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/jobs/{{ job.asset_id }}/reject">
+        <button class="danger-button" type="submit">Reject</button>
+      </form>
+    {% endif %}
   </aside>
 </section>
 {% endif %}

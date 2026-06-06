@@ -146,10 +146,10 @@ The app does not modify the downloaded working copy under `/data/work/<asset-id>
 
 In `review` mode, each compressed job exposes two actions:
 
-- `Upload Copy`: uploads the compressed file to Immich as a new asset, then copies Immich-side information from the original asset to the new asset with the stable v2 copy endpoint.
-- `Trash Original`: trashes the original Immich asset after the copied asset exists.
+- `Accept`: uploads the compressed file, copies Immich-side information, trashes the original asset, marks the job complete, and deletes local working copies.
+- `Reject`: discards the result, marks the job rejected, and deletes local working copies.
 
-In `auto` mode, both steps run automatically after compression succeeds.
+In `auto` mode, the Accept workflow runs automatically after compression succeeds.
 
 ```text
 POST /api/assets
