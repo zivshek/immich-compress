@@ -253,14 +253,18 @@ def process_asset(asset: str = Form(...)):
 
 
 @app.post("/videos/process-selected")
-def process_selected(asset_ids: list[str] = Form(default=[])):
+def process_selected(
+    asset_ids: list[str] = Form(default=[]),
+    page: int = Form(default=1),
+):
+    redirect_url = f"/videos?page={max(1, page)}"
     if not asset_ids:
-        return RedirectResponse("/videos", status_code=303)
+        return RedirectResponse(redirect_url, status_code=303)
     client = ImmichClient()
     for asset_id in asset_ids:
         asset = client.find_asset_by_id(asset_id)
         job_queue.enqueue_asset(asset)
-    return RedirectResponse("/jobs", status_code=303)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.post("/videos/process-all")
