@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+import shutil
 import threading
 from pathlib import Path
 from queue import Queue
+from dataclasses import dataclass
 
 from app import db
 from app.compression import compress_with_handbrake
@@ -17,9 +19,15 @@ ASSET_ID_RE = re.compile(
 LEGACY_PROCESSED_SUFFIX = "-hbed"
 
 
+@dataclass(frozen=True)
+class QueuedJob:
+    asset_id: str
+    batch_id: str | None = None
+
+
 class JobQueue:
     def __init__(self) -> None:
-        self.queue: Queue[str] = Queue()
+        self.queue: Queue[QueuedJob] = Queue()
         self.started = False
 
     def start(self) -> None:
@@ -30,19 +38,25 @@ class JobQueue:
             thread = threading.Thread(target=self._worker, name=f"compress-worker-{index}", daemon=True)
             thread.start()
 
-    def enqueue(self, asset_id_or_url: str) -> str:
+    def enqueue(self, asset_id_or_url: str, batch_id: str | None = None) -> str:
         asset_id = parse_asset_id(asset_id_or_url)
         client = ImmichClient()
         asset = client.find_asset_by_id(asset_id)
-        db.upsert_job(asset_id, asset.get("originalFileName") or asset_id)
-        self.queue.put(asset_id)
+        db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, batch_id=batch_id)
+        self.queue.put(QueuedJob(asset_id=asset_id, batch_id=batch_id))
+        return asset_id
+
+    def enqueue_asset(self, asset: dict, batch_id: str | None = None) -> str:
+        asset_id = asset["id"]
+        db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, batch_id=batch_id)
+        self.queue.put(QueuedJob(asset_id=asset_id, batch_id=batch_id))
         return asset_id
 
     def _worker(self) -> None:
         while True:
-            asset_id = self.queue.get()
+            queued = self.queue.get()
             try:
-                process_asset(asset_id)
+                process_asset(queued.asset_id, queued.batch_id)
             finally:
                 self.queue.task_done()
 
@@ -54,13 +68,13 @@ def parse_asset_id(value: str) -> str:
     return match.group(0)
 
 
-def process_asset(asset_id: str) -> None:
+def process_asset(asset_id: str, batch_id: str | None = None) -> None:
     config = effective_settings()
     client = ImmichClient(config)
     asset = client.find_asset_by_id(asset_id)
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
     if is_legacy_processed_filename(original_name):
-        db.upsert_job(asset_id, original_name, "processed")
+        db.upsert_job(asset_id, original_name, "processed", batch_id=batch_id)
         db.update_job(
             asset_id,
             progress_stage="Already processed",
@@ -73,7 +87,7 @@ def process_asset(asset_id: str) -> None:
         )
         return
 
-    db.upsert_job(asset_id, original_name, "compressing")
+    db.upsert_job(asset_id, original_name, "compressing", batch_id=batch_id)
 
     work_dir = config.data_dir / "work" / asset_id
     input_path = work_dir / original_name
@@ -158,6 +172,8 @@ def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
         error=None,
         logs=(job["logs"] or "") + f"\nUploaded compressed asset {target_asset_id} and copied Immich metadata.",
     )
+    cleanup_work_dir(asset_id)
+    db.update_job(asset_id, original_path=None, output_path=None)
     return target_asset_id
 
 
@@ -178,6 +194,8 @@ def trash_original_asset(asset_id: str) -> None:
         logs=(job["logs"] or "")
         + f"\nTrashed original asset after uploading compressed asset {job['target_asset_id']}.",
     )
+    cleanup_work_dir(asset_id)
+    db.update_job(asset_id, original_path=None, output_path=None)
 
 
 def mark_processed(asset_id: str) -> None:
@@ -195,6 +213,30 @@ def mark_processed(asset_id: str) -> None:
         error=None,
         logs=(job["logs"] or "") + "\nMarked as already processed.",
     )
+    cleanup_work_dir(asset_id)
+    db.update_job(asset_id, original_path=None, output_path=None)
+
+
+def reject_job(asset_id: str) -> None:
+    job = db.get_job(asset_id)
+    if not job:
+        raise RuntimeError("Job not found")
+    cleanup_work_dir(asset_id)
+    db.update_job(
+        asset_id,
+        state="rejected",
+        original_path=None,
+        output_path=None,
+        progress_stage="Rejected",
+        error=None,
+        logs=(job["logs"] or "") + "\nRejected and deleted local work files.",
+    )
+
+
+def cleanup_work_dir(asset_id: str) -> None:
+    work_dir = effective_settings().data_dir / "work" / asset_id
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
 
 
 def is_legacy_processed_filename(file_name: str) -> bool:

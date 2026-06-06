@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="toolbar">
+  <form method="post" action="/videos/process-all">
+    <button type="submit">Process All Unprocessed</button>
+  </form>
+</section>
+
+<section>
+  <h1>Videos</h1>
+  <form method="post" action="/videos/process-selected">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><input class="check-cell" type="checkbox" onclick="document.querySelectorAll('input[name=asset_ids]').forEach(cb => cb.checked = this.checked)"></th>
+            <th>File</th>
+            <th>Date</th>
+            <th>Size</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><input class="check-cell" name="asset_ids" type="checkbox" value="{{ row.asset.id }}"></td>
+            <td><a class="filename" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ row.asset.id }}" target="_blank" rel="noreferrer">{{ row.asset.originalFileName }}</a></td>
+            <td>{{ row.date }}</td>
+            <td>{{ row.size or "-" }}</td>
+            <td>
+              {% if row.job %}
+              <a href="/jobs/{{ row.asset.id }}"><span class="state state-{{ row.state }}">{{ row.state }}</span></a>
+              {% else %}
+              <span class="state">unprocessed</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty">No videos found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button type="submit">Process Selected</button>
+      <span>
+        {% if has_previous %}<a class="button secondary" href="/videos?page={{ page - 1 }}">Previous</a>{% endif %}
+        <span>Page {{ page }}</span>
+        {% if has_next %}<a class="button secondary" href="/videos?page={{ page + 1 }}">Next</a>{% endif %}
+      </span>
+    </div>
+  </form>
+</section>
+{% endblock %}

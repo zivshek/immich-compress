@@ -1,14 +1,43 @@
 {% extends "base.html" %}
 {% block content %}
+{% if batch and batch.active %}
+<script>
+  window.setTimeout(() => window.location.reload(), 3000);
+</script>
+{% endif %}
 <section class="toolbar">
   <form method="post" action="/jobs/process-asset" class="inline-form">
     <input name="asset" placeholder="Paste Immich asset ID or URL" required>
     <button type="submit">Process Asset</button>
   </form>
 </section>
+{% if batch %}
+<section class="progress-panel panel">
+  <div class="progress-header">
+    <div>
+      <span class="label">Latest Batch</span>
+      <strong>{{ batch.completed }} of {{ batch.total }} complete</strong>
+    </div>
+    <strong>{{ "%.0f"|format(batch.percent) }}%</strong>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" style="width: {{ batch.percent }}%"></div>
+  </div>
+  {% if batch.active %}
+  <div class="batch-list">
+    {% for job in batch.active %}
+    <div>
+      <a href="/jobs/{{ job.asset_id }}">{{ job.original_file_name }}</a>
+      <span>{{ job.progress_stage or job.state }}</span>
+      <span>{{ "%.0f"|format(job.progress_percent) ~ "%" if job.progress_percent is not none else "-" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 <section>
   <h1>Jobs</h1>
   {% include "partials/jobs_table.html" %}
 </section>
 {% endblock %}
-

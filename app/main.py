@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +11,8 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
-from app.jobs import job_queue, mark_processed, trash_original_asset, upload_copy
+from app.jobs import job_queue, mark_processed, reject_job as reject_work_job
+from app.jobs import trash_original_asset, upload_copy
 from app.tools import tool_statuses
 
 
@@ -131,16 +132,101 @@ def save_settings(
 
 @app.get("/jobs")
 def jobs_page(request: Request):
+    batch = db.batch_stats(None)
     return templates.TemplateResponse(
         request,
         "jobs.html",
-        {"settings": effective_settings(), "jobs": db.list_jobs(200)},
+        {"settings": effective_settings(), "jobs": db.list_jobs(200), "batch": batch},
+    )
+
+
+@app.get("/videos")
+def videos_page(request: Request, page: int = Query(1, ge=1)):
+    client = ImmichClient()
+    page_size = 10
+    videos, total = client.search_videos(page=page, size=page_size)
+    jobs_by_asset = db.list_jobs_for_assets([video["id"] for video in videos])
+    rows = []
+    for video in videos:
+        job = jobs_by_asset.get(video["id"])
+        rows.append(
+            {
+                "asset": video,
+                "job": job,
+                "state": job["state"] if job else "unprocessed",
+                "size": format_bytes(video.get("originalFileSize") or video.get("fileSizeInByte")),
+                "date": video.get("localDateTime") or video.get("fileCreatedAt") or "",
+            }
+        )
+    return templates.TemplateResponse(
+        request,
+        "videos.html",
+        {
+            "settings": effective_settings(),
+            "rows": rows,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "has_next": len(videos) == page_size,
+            "has_previous": page > 1,
+        },
     )
 
 
 @app.post("/jobs/process-asset")
 def process_asset(asset: str = Form(...)):
     job_queue.enqueue(asset)
+    return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/videos/process-selected")
+def process_selected(asset_ids: list[str] = Form(default=[])):
+    if not asset_ids:
+        return RedirectResponse("/videos", status_code=303)
+    client = ImmichClient()
+    existing = db.list_jobs_for_assets(asset_ids)
+    processable_ids = [
+        asset_id
+        for asset_id in asset_ids
+        if (existing.get(asset_id)["state"] if existing.get(asset_id) else "unprocessed")
+        in {"failed", "rejected", "unprocessed"}
+    ]
+    if not processable_ids:
+        return RedirectResponse("/videos", status_code=303)
+    batch_id = db.create_batch(len(processable_ids))
+    for asset_id in processable_ids:
+        asset = client.find_asset_by_id(asset_id)
+        job_queue.enqueue_asset(asset, batch_id=batch_id)
+    return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/videos/process-all")
+def process_all_videos():
+    client = ImmichClient()
+    all_assets: list[dict] = []
+    page = 1
+    while True:
+        videos, _ = client.search_videos(page=page, size=100)
+        if not videos:
+            break
+        all_assets.extend(videos)
+        if len(videos) < 100:
+            break
+        page += 1
+
+    jobs_by_asset = db.list_jobs_for_assets([asset["id"] for asset in all_assets])
+    processable_states = {"failed", "rejected", "unprocessed"}
+    pending_assets = []
+    for asset in all_assets:
+        job = jobs_by_asset.get(asset["id"])
+        state = job["state"] if job else "unprocessed"
+        if state in processable_states:
+            pending_assets.append(asset)
+
+    if pending_assets:
+        batch_id = db.create_batch(len(pending_assets))
+        for asset in pending_assets:
+            job_queue.enqueue_asset(asset, batch_id=batch_id)
     return RedirectResponse("/jobs", status_code=303)
 
 
@@ -217,5 +303,5 @@ def mark_processed_job(asset_id: str):
 def reject_job(asset_id: str):
     if not db.get_job(asset_id):
         raise HTTPException(status_code=404, detail="Job not found")
-    db.update_job(asset_id, state="rejected")
+    reject_work_job(asset_id)
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)

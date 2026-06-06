@@ -42,6 +42,25 @@ class ImmichClient:
         items = response.get("assets", {}).get("items", []) if isinstance(response, dict) else []
         return [item for item in items if not item.get("isTrashed")]
 
+    def search_videos(self, page: int = 1, size: int = 10) -> tuple[list[dict[str, Any]], int | None]:
+        response = self.request(
+            "POST",
+            "search/metadata",
+            json={
+                "type": "VIDEO",
+                "order": "desc",
+                "page": page,
+                "size": size,
+                "withExif": True,
+            },
+        )
+        assets = response.get("assets", response) if isinstance(response, dict) else {}
+        items = assets.get("items", []) if isinstance(assets, dict) else []
+        total = None
+        if isinstance(response, dict):
+            total = assets.get("total") or assets.get("count") or response.get("total")
+        return [item for item in items if not item.get("isTrashed")], total
+
     def find_asset_by_id(self, asset_id: str) -> dict[str, Any]:
         return self.request("GET", f"assets/{asset_id}")
 

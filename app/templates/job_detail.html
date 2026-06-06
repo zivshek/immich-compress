@@ -82,13 +82,17 @@
   </div>
 </section>
 
-{% if job.output_path %}
+{% if job.output_path or job.target_asset_id %}
 <section class="review-layout">
+  {% if job.output_path %}
   <div class="review-player">
     <video controls preload="metadata" src="/jobs/{{ job.asset_id }}/files/compressed"></video>
   </div>
+  {% endif %}
   <aside class="panel review-actions">
+    {% if job.output_path %}
     <a class="button" href="/jobs/{{ job.asset_id }}/files/compressed">Download Compressed</a>
+    {% endif %}
     {% if job.original_path %}
     <a class="button secondary" href="/jobs/{{ job.asset_id }}/files/original">Download Original</a>
     {% endif %}

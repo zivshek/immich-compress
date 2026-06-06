@@ -4,6 +4,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 from typing import Iterator
 
 from app.config import settings
@@ -29,6 +30,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS compression_jobs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
+              batch_id TEXT,
               asset_id TEXT NOT NULL,
               target_asset_id TEXT,
               original_file_name TEXT NOT NULL,
@@ -50,6 +52,17 @@ def init_db() -> None:
         db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_asset_id ON compression_jobs(asset_id)"
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processing_batches (
+              id TEXT PRIMARY KEY,
+              total_jobs INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        ensure_column(db, "compression_jobs", "batch_id", "TEXT")
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
@@ -86,6 +99,55 @@ def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
         )
 
 
+def list_jobs_for_assets(asset_ids: list[str]) -> dict[str, sqlite3.Row]:
+    if not asset_ids:
+        return {}
+    placeholders = ",".join("?" for _ in asset_ids)
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT * FROM compression_jobs WHERE asset_id IN ({placeholders})",
+            asset_ids,
+        ).fetchall()
+        return {row["asset_id"]: row for row in rows}
+
+
+def create_batch(total_jobs: int) -> str:
+    batch_id = str(uuid4())
+    now = utc_now()
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO processing_batches(id, total_jobs, created_at, updated_at)
+            VALUES(?, ?, ?, ?)
+            """,
+            (batch_id, total_jobs, now, now),
+        )
+    return batch_id
+
+
+def latest_batch() -> sqlite3.Row | None:
+    with connect() as db:
+        return db.execute(
+            """
+            SELECT * FROM processing_batches
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+
+def batch_jobs(batch_id: str) -> list[sqlite3.Row]:
+    with connect() as db:
+        return db.execute(
+            """
+            SELECT * FROM compression_jobs
+            WHERE batch_id = ?
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (batch_id,),
+        ).fetchall()
+
+
 def get_dashboard_stats() -> sqlite3.Row:
     with connect() as db:
         return db.execute(
@@ -111,24 +173,69 @@ def get_dashboard_stats() -> sqlite3.Row:
         ).fetchone()
 
 
+def batch_stats(batch_id: str | None) -> dict[str, object] | None:
+    if not batch_id:
+        batch = latest_batch()
+        if not batch:
+            return None
+        batch_id = batch["id"]
+    else:
+        batch = None
+
+    jobs = batch_jobs(batch_id)
+    if not batch and not jobs:
+        return None
+    completed_states = {
+        "processed",
+        "review",
+        "copied",
+        "copied-and-trashed",
+        "rejected",
+        "failed",
+        "copy-failed",
+        "trash-failed",
+    }
+    completed = sum(1 for job in jobs if job["state"] in completed_states)
+    total = len(jobs) or (batch["total_jobs"] if batch else 0)
+    active = [job for job in jobs if job["state"] not in completed_states]
+    if total:
+        percent = (completed / total) * 100
+    else:
+        percent = 0
+    return {
+        "id": batch_id,
+        "jobs": jobs,
+        "total": total,
+        "completed": completed,
+        "active": active,
+        "percent": percent,
+    }
+
+
 def get_job(asset_id: str) -> sqlite3.Row | None:
     with connect() as db:
         return db.execute("SELECT * FROM compression_jobs WHERE asset_id = ?", (asset_id,)).fetchone()
 
 
-def upsert_job(asset_id: str, original_file_name: str, state: str = "pending") -> None:
+def upsert_job(
+    asset_id: str,
+    original_file_name: str,
+    state: str = "pending",
+    batch_id: str | None = None,
+) -> None:
     now = utc_now()
     with connect() as db:
         db.execute(
             """
-            INSERT INTO compression_jobs(asset_id, original_file_name, state, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?)
+            INSERT INTO compression_jobs(asset_id, original_file_name, state, batch_id, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET
               original_file_name = excluded.original_file_name,
               state = excluded.state,
+              batch_id = COALESCE(excluded.batch_id, compression_jobs.batch_id),
               updated_at = excluded.updated_at
             """,
-            (asset_id, original_file_name, state, now, now),
+            (asset_id, original_file_name, state, batch_id, now, now),
         )
 
 

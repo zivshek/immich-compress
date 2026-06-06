@@ -119,6 +119,48 @@ h1 {
   margin: 18px 0 24px;
 }
 
+.pager {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.pager span {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.check-cell {
+  min-height: auto;
+  width: auto;
+}
+
+.batch-list {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.batch-list div {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 140px 60px;
+}
+
+.batch-list a {
+  color: var(--accent);
+  font-weight: 600;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .inline-form {
   display: flex;
   flex: 1;
@@ -344,6 +386,11 @@ label {
   margin-bottom: 24px;
 }
 
+.review-layout > .review-actions:first-child {
+  grid-column: 1 / -1;
+  max-width: 320px;
+}
+
 .review-player {
   background: #111;
   border-radius: 8px;
@@ -402,5 +449,16 @@ label {
   .detail-header,
   .review-layout {
     grid-template-columns: 1fr;
+  }
+
+  .pager,
+  .batch-list div {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .pager {
+    flex-direction: column;
+    gap: 10px;
   }
 }
