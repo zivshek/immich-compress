@@ -45,16 +45,19 @@ class ImmichClient:
         return [item for item in items if not item.get("isTrashed")]
 
     def search_videos(self, page: int = 1, size: int = 10) -> tuple[list[dict[str, Any]], int | None]:
+        query: dict[str, Any] = {
+            "type": "VIDEO",
+            "order": "desc",
+            "page": page,
+            "size": size,
+            "withExif": True,
+        }
+        if self.config.video_taken_before:
+            query["takenBefore"] = self.config.video_taken_before
         response = self.request(
             "POST",
             "search/metadata",
-            json={
-                "type": "VIDEO",
-                "order": "desc",
-                "page": page,
-                "size": size,
-                "withExif": True,
-            },
+            json=query,
         )
         assets = response.get("assets", response) if isinstance(response, dict) else {}
         items = assets.get("items", []) if isinstance(assets, dict) else []

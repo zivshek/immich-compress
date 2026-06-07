@@ -62,6 +62,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.set_setting("immich_api_key", "secret")
                 db.set_setting("max_concurrent_jobs", "3")
                 db.set_setting("upscale_to_4k", "true")
+                db.set_setting("video_taken_before", "2026-06-01T12:00:00.000Z")
                 configured = effective_settings()
 
                 with closing(sqlite3.connect(db.settings.database_path)) as connection:
@@ -86,6 +87,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(configured.immich_api_key, "secret")
                 self.assertEqual(configured.max_concurrent_jobs, 3)
                 self.assertTrue(configured.upscale_to_4k)
+                self.assertEqual(configured.video_taken_before, "2026-06-01T12:00:00.000Z")
             finally:
                 db.settings = original_settings
 

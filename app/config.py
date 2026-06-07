@@ -42,6 +42,7 @@ class Settings:
     exiftool: str = os.environ.get("EXIFTOOL", "exiftool")
     handbrake_preset: str = os.environ.get("HANDBRAKE_PRESET", "")
     handbrake_encoder: str = os.environ.get("HANDBRAKE_ENCODER", "")
+    video_taken_before: str = os.environ.get("VIDEO_TAKEN_BEFORE", "")
     poll_interval_seconds: int = env_int("POLL_INTERVAL_SECONDS", 300)
     auto_process_new_uploads: bool = env_bool("AUTO_PROCESS_NEW_UPLOADS", False)
     max_concurrent_jobs: int = env_int("MAX_CONCURRENT_JOBS", 1)
@@ -67,6 +68,7 @@ def effective_settings() -> Settings:
         immich_api_key=db.get_setting("immich_api_key", settings.immich_api_key),
         handbrake_preset=db.get_setting("handbrake_preset", settings.handbrake_preset),
         handbrake_encoder=db.get_setting("handbrake_encoder", settings.handbrake_encoder),
+        video_taken_before=db.get_setting("video_taken_before", settings.video_taken_before),
         max_concurrent_jobs=max(
             1,
             int(db.get_setting("max_concurrent_jobs", str(settings.max_concurrent_jobs))),

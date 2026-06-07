@@ -57,6 +57,12 @@
     <fieldset>
       <legend>Workflow</legend>
       <label>
+        Only Include Videos Taken Before
+        <input id="video-taken-before-local" type="datetime-local">
+        <input id="video-taken-before" name="video_taken_before" type="hidden" value="{{ settings.video_taken_before }}">
+        <small>Optional. Excludes videos captured at or after this moment. Replacement assets uploaded by this app remain visible because their original capture time is preserved.</small>
+      </label>
+      <label>
         Mode
         <select name="replacement_mode" data-described-select="mode-description">
           <option value="review" data-description="Compress and wait for you to accept or reject the result." {% if settings.replacement_mode == "review" %}selected{% endif %}>Review - approve each result</option>
@@ -77,6 +83,18 @@
     };
     select.addEventListener("change", updateDescription);
     updateDescription();
+  });
+  const cutoffLocal = document.getElementById("video-taken-before-local");
+  const cutoffUtc = document.getElementById("video-taken-before");
+  if (cutoffUtc.value) {
+    const date = new Date(cutoffUtc.value);
+    if (!Number.isNaN(date.getTime())) {
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      cutoffLocal.value = localDate.toISOString().slice(0, 16);
+    }
+  }
+  document.querySelector(".settings-form").addEventListener("submit", () => {
+    cutoffUtc.value = cutoffLocal.value ? new Date(cutoffLocal.value).toISOString() : "";
   });
 </script>
 {% endblock %}

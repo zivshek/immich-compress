@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Query, Request
@@ -239,12 +240,14 @@ def save_settings(
     immich_api_key: str = Form(...),
     handbrake_preset: str = Form(...),
     handbrake_encoder: str = Form(...),
+    video_taken_before: str = Form(default=""),
     max_concurrent_jobs: int = Form(...),
     upscale_to_4k: str | None = Form(default=None),
     replacement_mode: str = Form(...),
 ):
     immich_url = immich_url.strip().rstrip("/")
     immich_api_key = immich_api_key.strip()
+    video_taken_before = video_taken_before.strip()
     current = effective_settings()
     saved_api_key = immich_api_key or current.immich_api_key
     submitted = replace(
@@ -253,6 +256,7 @@ def save_settings(
         immich_api_key=saved_api_key,
         handbrake_preset=handbrake_preset,
         handbrake_encoder=handbrake_encoder,
+        video_taken_before=video_taken_before,
         max_concurrent_jobs=max_concurrent_jobs,
         upscale_to_4k=upscale_to_4k == "true",
         replacement_mode=normalize_mode(replacement_mode),
@@ -266,6 +270,11 @@ def save_settings(
         errors.append("Immich URL must begin with http:// or https://.")
     if not saved_api_key:
         errors.append("Immich API key is required.")
+    if video_taken_before:
+        try:
+            datetime.fromisoformat(video_taken_before.replace("Z", "+00:00"))
+        except ValueError:
+            errors.append("Video cutoff must be a valid date and time.")
     if handbrake_preset not in {option.value for option in presets}:
         errors.append("Choose a preset reported by HandBrakeCLI.")
     if handbrake_encoder not in {option.value for option in encoders}:
@@ -290,6 +299,7 @@ def save_settings(
         db.set_setting("immich_api_key", immich_api_key)
     db.set_setting("handbrake_preset", handbrake_preset)
     db.set_setting("handbrake_encoder", handbrake_encoder)
+    db.set_setting("video_taken_before", video_taken_before)
     db.set_setting("max_concurrent_jobs", str(max_concurrent_jobs))
     db.set_setting("upscale_to_4k", str(upscale_to_4k == "true"))
     db.set_setting("replacement_mode", normalize_mode(replacement_mode))
