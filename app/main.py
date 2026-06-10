@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi import HTTPException
@@ -14,7 +15,12 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.config import effective_settings, normalize_compression_mode, normalize_mode, settings
 from app.immich import ImmichClient
-from app.jobs import job_queue, mark_processed, reject_job as reject_work_job, upload_copy
+from app.jobs import (
+    job_queue,
+    mark_processed,
+    reject_job as reject_work_job,
+    upload_copy,
+)
 from app.tools import HandBrakeOption, handbrake_encoders, handbrake_presets, tool_statuses
 
 
@@ -166,6 +172,13 @@ def remembered_video_page(request: Request) -> int:
         return max(1, int(request.cookies.get("immich_compress_video_page", "1")))
     except ValueError:
         return 1
+
+
+def videos_url(page: int, search: str = "") -> str:
+    query = {"page": max(1, page)}
+    if search:
+        query["search"] = search
+    return f"/videos?{urlencode(query)}"
 
 
 def include_current_option(
@@ -335,19 +348,26 @@ def jobs_page(request: Request):
 
 
 @app.get("/videos")
-def videos_page(request: Request, page: int | None = Query(default=None, ge=1)):
+def videos_page(
+    request: Request,
+    page: int | None = Query(default=None, ge=1),
+    search: str = Query(default=""),
+):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
     client = ImmichClient()
     page_size = 10
+    search = search.strip()
     if page is None:
+        if search:
+            return RedirectResponse(videos_url(1, search), status_code=303)
         target_page = find_next_unprocessed_video_page(client, page_size)
         return RedirectResponse(
-            f"/videos?page={target_page or remembered_video_page(request)}",
+            videos_url(target_page or remembered_video_page(request)),
             status_code=303,
         )
 
-    videos, total = client.search_videos(page=page, size=page_size)
+    videos, total = client.search_videos(page=page, size=page_size, file_name=search)
     videos = enrich_video_assets(videos)
     jobs_by_asset = db.list_jobs_for_assets([video["id"] for video in videos])
     rows = []
@@ -380,6 +400,9 @@ def videos_page(request: Request, page: int | None = Query(default=None, ge=1)):
             "total": total,
             "has_next": len(videos) == page_size,
             "has_previous": page > 1,
+            "search": search,
+            "previous_url": videos_url(page - 1, search),
+            "next_url": videos_url(page + 1, search),
         },
     )
     response.set_cookie(
@@ -404,16 +427,35 @@ def process_asset(asset: str = Form(...)):
 def process_selected(
     asset_ids: list[str] = Form(default=[]),
     page: int = Form(default=1),
+    search: str = Form(default=""),
 ):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
-    redirect_url = f"/videos?page={max(1, page)}"
+    redirect_url = videos_url(page, search.strip())
     if not asset_ids:
         return RedirectResponse(redirect_url, status_code=303)
     client = ImmichClient()
     for asset_id in asset_ids:
         asset = client.find_asset_by_id(asset_id)
         job_queue.enqueue_asset(asset)
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.post("/videos/mark-processed")
+def mark_selected_processed(
+    asset_ids: list[str] = Form(default=[]),
+    page: int = Form(default=1),
+    search: str = Form(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    redirect_url = videos_url(page, search.strip())
+    client = ImmichClient()
+    for asset_id in asset_ids:
+        if db.get_job_for_asset(asset_id):
+            continue
+        asset = client.find_asset_by_id(asset_id)
+        db.mark_asset_as_processed(asset)
     return RedirectResponse(redirect_url, status_code=303)
 
 

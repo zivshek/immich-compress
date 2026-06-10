@@ -94,6 +94,30 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(configured.compression_mode, "perceptual-av1")
                 self.assertEqual(configured.video_score, 93)
                 self.assertEqual(configured.min_savings_percent, 20)
+
+                marked = db.mark_asset_as_processed(
+                    {
+                        "id": "external-id",
+                        "originalFileName": "external.mp4",
+                        "originalFileSize": 123456,
+                    }
+                )
+                external_job = db.get_job("external-id")
+                self.assertTrue(marked)
+                self.assertEqual(external_job["state"], "processed")
+                self.assertEqual(external_job["original_size"], 123456)
+                self.assertEqual(external_job["compressed_size"], 123456)
+                self.assertEqual(external_job["saved_bytes"], 0)
+                self.assertFalse(
+                    db.mark_asset_as_processed(
+                        {
+                            "id": "external-id",
+                            "originalFileName": "external.mp4",
+                            "originalFileSize": 654321,
+                        }
+                    )
+                )
+                self.assertEqual(db.get_job("external-id")["original_size"], 123456)
             finally:
                 db.settings = original_settings
 

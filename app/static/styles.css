@@ -181,6 +181,18 @@ h1 {
   justify-content: flex-end;
 }
 
+.video-search {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.video-search input {
+  flex: 1;
+  margin: 0;
+}
+
 .video-pager {
   justify-content: flex-end;
 }

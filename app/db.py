@@ -243,6 +243,31 @@ def upsert_job(
         )
 
 
+def mark_asset_as_processed(asset: dict) -> bool:
+    asset_id = asset["id"]
+    if get_job_for_asset(asset_id):
+        return False
+    exif = asset.get("exifInfo") or {}
+    current_size = (
+        asset.get("originalFileSize")
+        or asset.get("fileSizeInByte")
+        or exif.get("fileSizeInByte")
+        or exif.get("fileSize")
+    )
+    upsert_job(asset_id, asset.get("originalFileName") or asset_id, "processed")
+    update_job(
+        asset_id,
+        original_size=current_size,
+        compressed_size=current_size,
+        saved_bytes=0,
+        progress_stage="Already processed",
+        progress_percent=100,
+        process_started_at=utc_now(),
+        logs="Marked as already processed from the Videos page.",
+    )
+    return True
+
+
 def update_job(asset_id: str, **values: object) -> None:
     if not values:
         return

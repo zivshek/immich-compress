@@ -44,7 +44,12 @@ class ImmichClient:
         items = response.get("assets", {}).get("items", []) if isinstance(response, dict) else []
         return [item for item in items if not item.get("isTrashed")]
 
-    def search_videos(self, page: int = 1, size: int = 10) -> tuple[list[dict[str, Any]], int | None]:
+    def search_videos(
+        self,
+        page: int = 1,
+        size: int = 10,
+        file_name: str = "",
+    ) -> tuple[list[dict[str, Any]], int | None]:
         query: dict[str, Any] = {
             "type": "VIDEO",
             "order": "desc",
@@ -52,8 +57,10 @@ class ImmichClient:
             "size": size,
             "withExif": True,
         }
-        if self.config.video_taken_before:
+        if self.config.video_taken_before and not file_name:
             query["takenBefore"] = self.config.video_taken_before
+        if file_name:
+            query["originalFileName"] = file_name
         response = self.request(
             "POST",
             "search/metadata",

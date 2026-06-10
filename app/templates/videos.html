@@ -1,10 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <section>
+  <form class="video-search" method="get" action="/videos">
+    <input name="search" type="search" value="{{ search }}" placeholder="Search videos by filename" aria-label="Search videos by filename">
+    <button type="submit">Search</button>
+    {% if search %}<a class="button secondary" href="/videos?page=1">Clear</a>{% endif %}
+  </form>
   <form method="post" action="/videos/process-selected">
     <input type="hidden" name="page" value="{{ page }}">
+    <input type="hidden" name="search" value="{{ search }}">
     <div class="toolbar video-actions">
       <button class="warning-button" type="submit" formaction="/videos/process-all" onclick="return confirm('Queue every unprocessed video?')">Process All Unprocessed</button>
+      <button class="secondary" type="submit" formaction="/videos/mark-processed" onclick="return confirm('Mark the selected unprocessed videos as already processed?')">Mark Processed</button>
       <button type="submit">Process Selected</button>
     </div>
     <div class="table-wrap">
@@ -47,9 +54,9 @@
     </div>
     <div class="pager video-pager">
       <span>
-        {% if has_previous %}<a class="button secondary" href="/videos?page={{ page - 1 }}">Previous</a>{% endif %}
+        {% if has_previous %}<a class="button secondary" href="{{ previous_url }}">Previous</a>{% endif %}
         <span>Page {{ page }}</span>
-        {% if has_next %}<a class="button secondary" href="/videos?page={{ page + 1 }}">Next</a>{% endif %}
+        {% if has_next %}<a class="button secondary" href="{{ next_url }}">Next</a>{% endif %}
       </span>
     </div>
   </form>
