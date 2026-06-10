@@ -245,7 +245,8 @@ def upsert_job(
 
 def mark_asset_as_processed(asset: dict) -> bool:
     asset_id = asset["id"]
-    if get_job_for_asset(asset_id):
+    existing = get_job_for_asset(asset_id)
+    if existing and (existing["asset_id"] != asset_id or existing["state"] != "canceled"):
         return False
     exif = asset.get("exifInfo") or {}
     current_size = (
@@ -254,16 +255,23 @@ def mark_asset_as_processed(asset: dict) -> bool:
         or exif.get("fileSizeInByte")
         or exif.get("fileSize")
     )
-    upsert_job(asset_id, asset.get("originalFileName") or asset_id, "processed")
+    if not existing:
+        upsert_job(asset_id, asset.get("originalFileName") or asset_id, "processed")
+    existing_logs = existing["logs"] if existing else ""
     update_job(
         asset_id,
+        original_file_name=asset.get("originalFileName") or asset_id,
+        state="processed",
         original_size=current_size,
         compressed_size=current_size,
         saved_bytes=0,
+        original_path=None,
+        output_path=None,
         progress_stage="Already processed",
         progress_percent=100,
         process_started_at=utc_now(),
-        logs="Marked as already processed from the Videos page.",
+        error=None,
+        logs=(existing_logs + "\nMarked as already processed from the Videos page.").strip(),
     )
     return True
 

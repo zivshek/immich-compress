@@ -118,6 +118,23 @@ class DatabaseMigrationTest(unittest.TestCase):
                     )
                 )
                 self.assertEqual(db.get_job("external-id")["original_size"], 123456)
+
+                db.upsert_job("canceled-id", "canceled.mp4", "canceled")
+                db.update_job("canceled-id", logs="Canceled and cleaned up.")
+                self.assertTrue(
+                    db.mark_asset_as_processed(
+                        {
+                            "id": "canceled-id",
+                            "originalFileName": "canceled.mp4",
+                            "originalFileSize": 222222,
+                        }
+                    )
+                )
+                canceled_job = db.get_job("canceled-id")
+                self.assertEqual(canceled_job["state"], "processed")
+                self.assertEqual(canceled_job["compressed_size"], 222222)
+                self.assertIn("Canceled and cleaned up.", canceled_job["logs"])
+                self.assertIn("Marked as already processed", canceled_job["logs"])
             finally:
                 db.settings = original_settings
 

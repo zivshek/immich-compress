@@ -452,8 +452,6 @@ def mark_selected_processed(
     redirect_url = videos_url(page, search.strip())
     client = ImmichClient()
     for asset_id in asset_ids:
-        if db.get_job_for_asset(asset_id):
-            continue
         asset = client.find_asset_by_id(asset_id)
         db.mark_asset_as_processed(asset)
     return RedirectResponse(redirect_url, status_code=303)
