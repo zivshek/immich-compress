@@ -130,18 +130,23 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
         db.close()
 
 
-def list_jobs(limit: int = 100) -> list[sqlite3.Row]:
+def list_jobs(limit: int = 100, offset: int = 0) -> list[sqlite3.Row]:
     with connect() as db:
         return list(
             db.execute(
                 """
                 SELECT * FROM compression_jobs
                 ORDER BY queued_at DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             )
         )
+
+
+def count_jobs() -> int:
+    with connect() as db:
+        return int(db.execute("SELECT COUNT(*) FROM compression_jobs").fetchone()[0])
 
 
 def list_jobs_by_states(states: set[str]) -> list[sqlite3.Row]:

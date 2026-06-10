@@ -338,12 +338,24 @@ def save_settings(
 
 
 @app.get("/jobs")
-def jobs_page(request: Request):
+def jobs_page(request: Request, page: int = Query(default=1, ge=1)):
     queue_status = job_queue.snapshot()
+    page_size = 25
+    total = db.count_jobs()
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, total_pages)
     return templates.TemplateResponse(
         request,
         "jobs.html",
-        {"settings": effective_settings(), "jobs": db.list_jobs(200), "queue": queue_status},
+        {
+            "settings": effective_settings(),
+            "jobs": db.list_jobs(page_size, (page - 1) * page_size),
+            "queue": queue_status,
+            "page": page,
+            "total_pages": total_pages,
+            "has_previous": page > 1,
+            "has_next": page < total_pages,
+        },
     )
 
 
@@ -490,6 +502,16 @@ def cancel_job(asset_id: str):
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 
+@app.post("/jobs/{asset_id}/retry")
+def retry_job(asset_id: str):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    if not db.get_job(asset_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_queue.retry(asset_id)
+    return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
+
+
 @app.get("/jobs/{asset_id}")
 def job_detail(request: Request, asset_id: str):
     job = db.get_job(asset_id)
@@ -510,6 +532,7 @@ def job_detail(request: Request, asset_id: str):
             "job": job,
             "asset_info": asset_info,
             "can_cancel": job["state"] in {"pending", "compressing"},
+            "can_retry": job["state"] in {"failed", "rejected", "canceled"},
         },
     )
 

@@ -16,6 +16,7 @@ ASSET_ID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 LEGACY_PROCESSED_SUFFIX = "-hbed"
+RETRYABLE_STATES = {"failed", "rejected", "canceled"}
 
 
 class JobQueue:
@@ -51,7 +52,7 @@ class JobQueue:
             if asset_id in self.queued_ids or asset_id in self.active:
                 return False
             job = db.get_job_for_asset(asset_id)
-            if job and job["state"] not in {"failed", "rejected", "canceled"}:
+            if job and job["state"] not in RETRYABLE_STATES:
                 return False
             if not self.queued_ids and not self.active:
                 self.run_total = 0
@@ -61,6 +62,28 @@ class JobQueue:
             self.run_total += 1
             self.queue.put(asset_id)
         return True
+
+    def retry(self, asset_id: str) -> bool:
+        job = db.get_job(asset_id)
+        if not job or job["state"] not in RETRYABLE_STATES:
+            return False
+        asset = ImmichClient().find_asset_by_id(asset_id)
+        cleanup_work_dir(asset_id)
+        db.update_job(
+            asset_id,
+            original_path=None,
+            output_path=None,
+            target_asset_id=None,
+            original_size=None,
+            compressed_size=None,
+            saved_bytes=None,
+            progress_stage="Retrying",
+            progress_percent=0,
+            process_started_at=None,
+            error=None,
+            logs=((job["logs"] or "") + "\nRetry requested.").strip(),
+        )
+        return self.enqueue_asset(asset)
 
     def snapshot(self) -> dict[str, object] | None:
         with self.lock:

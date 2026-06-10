@@ -86,6 +86,8 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(db.get_job_for_asset("copied-id")["asset_id"], "original-id")
                 self.assertEqual(stable_queued_at, "2020-01-01T00:00:00+00:00")
                 self.assertEqual(db.list_jobs(2)[0]["asset_id"], "pending-id")
+                self.assertEqual(db.list_jobs(1, 1)[0]["asset_id"], "original-id")
+                self.assertEqual(db.count_jobs(), 2)
                 self.assertEqual(configured.immich_url, "http://immich:2283")
                 self.assertEqual(configured.immich_api_key, "secret")
                 self.assertEqual(configured.max_concurrent_jobs, 3)

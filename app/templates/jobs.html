@@ -54,5 +54,14 @@
 <section>
   <h1>Jobs</h1>
   {% include "partials/jobs_table.html" %}
+  {% if total_pages > 1 %}
+  <div class="pager video-pager">
+    <span>
+      {% if has_previous %}<a class="button secondary" href="/jobs?page={{ page - 1 }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ total_pages }}</span>
+      {% if has_next %}<a class="button secondary" href="/jobs?page={{ page + 1 }}">Next</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
 </section>
 {% endblock %}
