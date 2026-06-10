@@ -21,8 +21,26 @@
     <fieldset>
       <legend>Compression</legend>
       <label>
+        Strategy
+        <select id="compression-mode" name="compression_mode" data-described-select="compression-description">
+          <option value="perceptual-av1" data-description="Uses VMAF sampling to find an efficient SVT-AV1 encode that meets your quality target." {% if settings.compression_mode == "perceptual-av1" %}selected{% endif %}>Perceptual AV1 (recommended)</option>
+          <option value="handbrake" data-description="Uses the selected HandBrake preset and encoder without perceptual quality targeting." {% if settings.compression_mode == "handbrake" %}selected{% endif %}>HandBrake</option>
+        </select>
+        <small id="compression-description"></small>
+      </label>
+      <label class="av1-setting">
+        Video VMAF Target
+        <input name="video_score" type="number" min="1" max="100" step="1" value="{{ settings.video_score }}" required>
+        <small>95 is visually transparent for most footage. Lower values save more space; higher values take longer and may fail the savings requirement.</small>
+      </label>
+      <label class="av1-setting">
+        Minimum Savings
+        <input name="min_savings_percent" type="number" min="1" max="99" step="1" value="{{ settings.min_savings_percent }}" required>
+        <small>Rejects an encode unless it saves at least this percentage. The AV1 search also uses this limit to avoid wasteful candidates.</small>
+      </label>
+      <label class="handbrake-setting">
         HandBrake Preset
-        <select name="handbrake_preset" data-described-select="preset-description" required>
+        <select name="handbrake_preset" data-described-select="preset-description">
           <option value="" {% if not settings.handbrake_preset %}selected{% endif %} disabled>Choose a preset</option>
           {% for option in presets %}
           <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_preset == option.value %}selected{% endif %}>{{ option.value }}</option>
@@ -31,9 +49,9 @@
         <small id="preset-description">Controls the preset's quality, speed, audio, and container defaults.</small>
         {% if not presets %}<small class="error">No presets were reported by HandBrakeCLI.</small>{% endif %}
       </label>
-      <label>
+      <label class="handbrake-setting">
         Video Encoder
-        <select name="handbrake_encoder" data-described-select="encoder-description" required>
+        <select name="handbrake_encoder" data-described-select="encoder-description">
           <option value="" {% if not settings.handbrake_encoder %}selected{% endif %} disabled>Choose an encoder</option>
           {% for option in encoders %}
           <option value="{{ option.value }}" data-description="{{ option.description }}" {% if settings.handbrake_encoder == option.value %}selected{% endif %}>{{ option.value }}</option>
@@ -45,9 +63,9 @@
       <label>
         Concurrent Jobs
         <input name="max_concurrent_jobs" type="number" min="1" max="8" step="1" value="{{ settings.max_concurrent_jobs }}" required>
-        <small>Number of videos encoded at the same time. Higher values require more CPU, GPU, memory, and disk bandwidth. Applied after restarting the container.</small>
+        <small>Number of videos encoded at the same time. Higher values require more CPU, memory, and disk bandwidth. Applied after restarting the container.</small>
       </label>
-      <label class="toggle-field">
+      <label class="toggle-field handbrake-setting">
         <input name="upscale_to_4k" type="checkbox" value="true" {% if settings.upscale_to_4k %}checked{% endif %}>
         <span>Upscale smaller videos toward 4K</span>
         <small>Off preserves the source resolution. Enabling this increases processing time and usually increases file size.</small>
@@ -96,5 +114,19 @@
   document.querySelector(".settings-form").addEventListener("submit", () => {
     cutoffUtc.value = cutoffLocal.value ? new Date(cutoffLocal.value).toISOString() : "";
   });
+  const compressionMode = document.getElementById("compression-mode");
+  const updateCompressionFields = () => {
+    const handbrake = compressionMode.value === "handbrake";
+    document.querySelectorAll(".handbrake-setting").forEach((element) => {
+      element.hidden = !handbrake;
+      const select = element.querySelector("select");
+      if (select) select.required = handbrake;
+    });
+    document.querySelectorAll(".av1-setting").forEach((element) => {
+      element.hidden = handbrake;
+    });
+  };
+  compressionMode.addEventListener("change", updateCompressionFields);
+  updateCompressionFields();
 </script>
 {% endblock %}

@@ -63,6 +63,9 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.set_setting("max_concurrent_jobs", "3")
                 db.set_setting("upscale_to_4k", "true")
                 db.set_setting("video_taken_before", "2026-06-01T12:00:00.000Z")
+                db.set_setting("compression_mode", "perceptual-av1")
+                db.set_setting("video_score", "93")
+                db.set_setting("min_savings_percent", "20")
                 configured = effective_settings()
 
                 with closing(sqlite3.connect(db.settings.database_path)) as connection:
@@ -88,6 +91,9 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(configured.max_concurrent_jobs, 3)
                 self.assertTrue(configured.upscale_to_4k)
                 self.assertEqual(configured.video_taken_before, "2026-06-01T12:00:00.000Z")
+                self.assertEqual(configured.compression_mode, "perceptual-av1")
+                self.assertEqual(configured.video_score, 93)
+                self.assertEqual(configured.min_savings_percent, 20)
             finally:
                 db.settings = original_settings
 

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import db
-from app.config import effective_settings, normalize_mode, settings
+from app.config import effective_settings, normalize_compression_mode, normalize_mode, settings
 from app.immich import ImmichClient
 from app.jobs import job_queue, mark_processed, reject_job as reject_work_job, upload_copy
 from app.tools import HandBrakeOption, handbrake_encoders, handbrake_presets, tool_statuses
@@ -192,12 +192,10 @@ def settings_page_context(message: str | None = None) -> dict[str, object]:
 
 def processing_is_configured() -> bool:
     current = effective_settings()
-    return bool(
-        current.immich_url
-        and current.immich_api_key
-        and current.handbrake_preset
-        and current.handbrake_encoder
+    compression_configured = current.compression_mode == "perceptual-av1" or bool(
+        current.handbrake_preset and current.handbrake_encoder
     )
+    return bool(current.immich_url and current.immich_api_key and compression_configured)
 
 
 @app.on_event("startup")
@@ -238,8 +236,11 @@ def save_settings(
     request: Request,
     immich_url: str = Form(...),
     immich_api_key: str = Form(...),
-    handbrake_preset: str = Form(...),
-    handbrake_encoder: str = Form(...),
+    compression_mode: str = Form(...),
+    video_score: int = Form(...),
+    min_savings_percent: int = Form(...),
+    handbrake_preset: str = Form(default=""),
+    handbrake_encoder: str = Form(default=""),
     video_taken_before: str = Form(default=""),
     max_concurrent_jobs: int = Form(...),
     upscale_to_4k: str | None = Form(default=None),
@@ -254,6 +255,9 @@ def save_settings(
         current,
         immich_url=immich_url,
         immich_api_key=saved_api_key,
+        compression_mode=normalize_compression_mode(compression_mode),
+        video_score=video_score,
+        min_savings_percent=min_savings_percent,
         handbrake_preset=handbrake_preset,
         handbrake_encoder=handbrake_encoder,
         video_taken_before=video_taken_before,
@@ -275,10 +279,17 @@ def save_settings(
             datetime.fromisoformat(video_taken_before.replace("Z", "+00:00"))
         except ValueError:
             errors.append("Video cutoff must be a valid date and time.")
-    if handbrake_preset not in {option.value for option in presets}:
-        errors.append("Choose a preset reported by HandBrakeCLI.")
-    if handbrake_encoder not in {option.value for option in encoders}:
-        errors.append("Choose an encoder reported by HandBrakeCLI.")
+    if compression_mode not in {"handbrake", "perceptual-av1"}:
+        errors.append("Choose a supported compression strategy.")
+    if compression_mode == "handbrake":
+        if handbrake_preset not in {option.value for option in presets}:
+            errors.append("Choose a preset reported by HandBrakeCLI.")
+        if handbrake_encoder not in {option.value for option in encoders}:
+            errors.append("Choose an encoder reported by HandBrakeCLI.")
+    if not 1 <= video_score <= 100:
+        errors.append("Video VMAF target must be between 1 and 100.")
+    if not 1 <= min_savings_percent <= 99:
+        errors.append("Minimum savings must be between 1 and 99 percent.")
     if not 1 <= max_concurrent_jobs <= 8:
         errors.append("Concurrent jobs must be between 1 and 8.")
     if errors:
@@ -297,6 +308,9 @@ def save_settings(
     db.set_setting("immich_url", immich_url)
     if immich_api_key:
         db.set_setting("immich_api_key", immich_api_key)
+    db.set_setting("compression_mode", normalize_compression_mode(compression_mode))
+    db.set_setting("video_score", str(video_score))
+    db.set_setting("min_savings_percent", str(min_savings_percent))
     db.set_setting("handbrake_preset", handbrake_preset)
     db.set_setting("handbrake_encoder", handbrake_encoder)
     db.set_setting("video_taken_before", video_taken_before)

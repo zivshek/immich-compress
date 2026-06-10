@@ -7,7 +7,7 @@ from pathlib import Path
 from queue import Empty, Queue
 
 from app import db
-from app.compression import compress_with_handbrake
+from app.compression import compress_video
 from app.config import effective_settings
 from app.immich import ImmichClient
 
@@ -194,7 +194,7 @@ def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
             if line:
                 db.append_job_log(asset_id, line)
 
-        result = compress_with_handbrake(
+        result = compress_video(
             input_path,
             output_dir,
             config,

@@ -1,7 +1,7 @@
 [project]
 name = "immich-compress"
 version = "0.1.0"
-description = "A sidecar app for compressing Immich videos with HandBrakeCLI."
+description = "A sidecar app for perceptually compressing existing Immich videos with AV1."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.111.0",

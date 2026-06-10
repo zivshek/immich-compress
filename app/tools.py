@@ -48,6 +48,8 @@ def check_command(name: str, command: str, *version_args: str) -> ToolStatus:
 
 def tool_statuses(config: Settings) -> list[ToolStatus]:
     return [
+        check_command("ab-av1", config.ab_av1, "--version"),
+        check_command("Perceptual FFmpeg", config.perceptual_ffmpeg, "-version"),
         check_command("HandBrakeCLI", config.handbrake_cli, "--version"),
         check_command("ExifTool", config.exiftool, "-ver"),
         check_command("FFmpeg", config.ffmpeg, "-version"),

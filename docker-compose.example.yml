@@ -11,10 +11,3 @@ services:
     volumes:
       - ./immich-compress-data:/data
       - ${UPLOAD_LOCATION}:/immich-upload
-
-    # NVIDIA NVENC: requires NVIDIA drivers and NVIDIA Container Toolkit on the host.
-    # gpus: all
-
-    # Intel QSV / VAAPI: choose the matching encoder in Settings.
-    # devices:
-    #   - /dev/dri:/dev/dri

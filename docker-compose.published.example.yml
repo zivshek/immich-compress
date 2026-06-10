@@ -7,11 +7,3 @@ services:
       - "8097:8097"
     volumes:
       - /mnt/Apps/AppData/immich-compress:/data
-
-    # NVIDIA NVENC: requires NVIDIA drivers and NVIDIA Container Toolkit on the host.
-    # Uncomment this for Compose deployments that support the `gpus` key.
-    # gpus: all
-
-    # Intel QSV / VAAPI: uncomment and choose a QSV or VA-API encoder in Settings.
-    # devices:
-    #   - /dev/dri:/dev/dri

@@ -92,7 +92,7 @@ class ImmichClient:
             "deviceId": "immich-compress",
             "fileCreatedAt": source_asset["fileCreatedAt"],
             "fileModifiedAt": source_asset["fileModifiedAt"],
-            "filename": source_asset.get("originalFileName") or replacement_path.name,
+            "filename": replacement_path.name,
         }
         if source_asset.get("duration"):
             data["duration"] = source_asset["duration"]

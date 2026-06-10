@@ -1,6 +1,7 @@
 # Immich Compress
 
-Immich Compress is a sidecar app for compressing Immich videos with HandBrakeCLI while keeping the compression and metadata behavior from the original `hbed.py` workflow.
+Immich Compress is a sidecar app for perceptually compressing existing Immich videos with
+SVT-AV1 while preserving resolution, orientation, audio, chapters, and metadata.
 
 It is intentionally separate from Immich so you can maintain and deploy it without carrying an Immich source fork.
 
@@ -12,7 +13,9 @@ This repo is an early scaffold. It can:
 - store job state in SQLite under `/data`
 - accept an Immich asset ID or URL
 - download the original asset through the Immich API
-- compress it with HandBrakeCLI using the migrated `hbed.py` behavior
+- find an efficient SVT-AV1 encode that meets a configurable VMAF quality target
+- reject results that do not meet a configurable minimum space savings
+- retain HandBrake as an optional legacy compression strategy
 - copy metadata with ExifTool
 - leave the compressed output in review state
 - queue selected or all unprocessed videos without duplicate processing
@@ -36,12 +39,14 @@ Open `http://localhost:8097`.
 The Docker image ships with the media tooling used by the app:
 
 - `HandBrakeCLI`
+- `ab-av1`
+- a dedicated FFmpeg build with SVT-AV1 and libvmaf
 - `exiftool`
 - `ffmpeg`
 - `ffprobe`
 
 Copy `docker-compose.example.yml` into your Immich compose folder and adjust the volume
-paths and GPU/device mappings if you want hardware encoding inside the container.
+paths.
 
 Then run:
 
@@ -68,8 +73,9 @@ Open Settings and configure:
 
 - the Immich URL reachable from the container, for example `http://192.168.1.50:2283`
 - an Immich API key
-- a preset and encoder detected from the bundled HandBrakeCLI
-- concurrency and optional 4K upscaling behavior
+- Perceptual AV1 as the compression strategy
+- a VMAF target and minimum required savings
+- concurrency
 - review or automatic replacement mode
 
 If you want to build locally from source instead, use `docker-compose.example.yml` and run:
@@ -80,58 +86,23 @@ docker compose up -d --build
 
 ## Settings
 
-Connection, preset, encoder, concurrency, upscaling, and workflow mode are configured from the Settings page and
-stored in `/data/immich-compress.sqlite`. HandBrake presets and encoders are detected from
-the bundled CLI and presented as described dropdowns. Environment variables remain optional
-bootstrap fallbacks for existing or automated deployments, but fresh installs have no
-hard-coded preset or encoder.
+Connection, compression strategy, AV1 quality target, minimum savings, concurrency,
+upscaling, and workflow mode are configured from the Settings page and stored in
+`/data/immich-compress.sqlite`. Environment variables remain optional bootstrap fallbacks.
 
-Tool path variables such as `HANDBRAKE_CLI` and `EXIFTOOL` remain available for advanced
-deployments. The commands are already included in the published Docker image.
+Perceptual AV1 defaults to VMAF 95 and at least 20% savings. The encoder samples the source,
+searches for an SVT-AV1 quality setting that meets both requirements, then performs the full encode. Select
+**Process All Unprocessed** on the Videos page to apply it to all existing videos.
 
-## GPU encoding
+Tool path variables such as `AB_AV1`, `PERCEPTUAL_FFMPEG`, `VMAF_MODEL_DIR`,
+`HANDBRAKE_CLI`, and `EXIFTOOL` remain available for advanced deployments. The commands are
+already included in the published Docker image.
 
-The app ships with HandBrakeCLI, but hardware encoding still needs the host GPU passed into the container.
+## AV1 encoding
 
-### NVIDIA NVENC
-
-To use an NVENC encoder, the Docker host must have:
-
-- NVIDIA driver installed
-- NVIDIA Container Toolkit installed/configured
-- GPU access enabled for this container
-
-For Docker Compose deployments that support it, add:
-
-```yaml
-services:
-  immich-compress:
-    gpus: all
-    environment:
-      NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
-```
-
-If the logs show `Cannot load libnvidia-encode.so.1` or `Cannot load libcuda.so.1`, the container does not have GPU access yet.
-
-On TrueNAS Scale, enable GPU passthrough/allocation for the Immich Compress app/container in the app settings. If using a custom Compose app, uncomment `gpus: all` in `docker-compose.published.example.yml` if your TrueNAS Docker setup supports it. Otherwise use the TrueNAS UI GPU allocation controls.
-
-### Intel Quick Sync / VAAPI
-
-For Intel hardware encoding, pass `/dev/dri` into the container and choose a QSV encoder in Settings:
-
-```yaml
-services:
-  immich-compress:
-    devices:
-      - /dev/dri:/dev/dri
-```
-
-If QSV is not available, try `vaapi_h265` if your HandBrake build and host GPU support it.
-
-### CPU fallback
-
-For testing without GPU passthrough, choose a software encoder such as `x265` in Settings.
-This will be slower, but it confirms the rest of the workflow is healthy.
+Perceptual AV1 uses CPU-based SVT-AV1. It is slower than GPU encoding, but produces smaller
+files at the same perceived quality. VMAF analysis also uses substantial CPU time because it
+compares several sampled encodes before the final encode. No GPU passthrough is required.
 
 ## Accepting reviewed files
 
@@ -152,39 +123,3 @@ PUT /api/assets/copy
 The original asset id remains cached in this app as `asset_id`, and the new uploaded asset id is stored as `target_asset_id`.
 
 `copyAsset` copies Immich-side data such as albums, favorites, shared links, sidecars, and stacks. ExifTool is still used before upload so metadata embedded inside the MP4 migrates with the actual file.
-
-## Importing already-compressed files
-
-For videos you already compressed manually, use the manual import utility. It looks for files whose stem ends in the legacy suffix, such as `20250503_210902-hbed.mp4`, searches Immich for the original asset stem, records that asset as `processed` in the sidecar database, and can rename the local file back to `20250503_210902.mp4`.
-
-Start with a dry run:
-
-```powershell
-immich-compress-import-manual "D:\path\to\processed-videos" --recursive --rename
-```
-
-Apply the database import and rename:
-
-```powershell
-immich-compress-import-manual "D:\path\to\processed-videos" --recursive --rename --apply
-```
-
-The utility refuses to rename if the target filename already exists. That means `20250503_210902-hbed.mp4` will not overwrite an existing `20250503_210902.mp4`.
-
-You can override the suffix:
-
-```powershell
-immich-compress-import-manual "D:\path\to\processed-videos" --suffix "-hbed" --rename --apply
-```
-
-## Migration notes
-
-The migrated compression logic preserves the important behavior from `hbed.py`:
-
-- supports the same video extensions
-- writes temporary outputs using the original filename in the job work folder
-- keeps the stored pixel matrix dimensions by default
-- optionally bounds upscaled output to 3840x2160
-- neutralizes rotation metadata before HandBrake encoding
-- restores metadata with ExifTool using an args file
-- removes ExifTool `_original` artifacts
