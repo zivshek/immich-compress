@@ -8,17 +8,18 @@ RUN cargo install ab-av1 --version "${AB_AV1_VERSION}" --locked --root /out \
 FROM debian:bookworm-slim AS ab-ffmpeg-builder
 
 ARG FFMPEG_VERSION=7.1.1
+ARG SVT_AV1_VERSION=v2.3.0
 ARG VMAF_VERSION=v3.0.0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       build-essential \
       ca-certificates \
+      cmake \
       curl \
       git \
       libdav1d-dev \
       libopus-dev \
-      libsvtav1-dev \
       meson \
       nasm \
       ninja-build \
@@ -29,6 +30,16 @@ RUN apt-get update \
     && mkdir -p /build /opt/ab-av1
 
 WORKDIR /build
+RUN git clone --depth 1 --branch "${SVT_AV1_VERSION}" https://gitlab.com/AOMediaCodec/SVT-AV1.git svt-av1 \
+    && cmake -S svt-av1 -B svt-av1/build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/opt/ab-av1 \
+      -DBUILD_APPS=OFF \
+      -DBUILD_SHARED_LIBS=ON \
+      -DBUILD_TESTING=OFF \
+    && cmake --build svt-av1/build --parallel \
+    && cmake --install svt-av1/build
+
 RUN git clone --depth 1 --branch "${VMAF_VERSION}" https://github.com/Netflix/vmaf.git \
     && meson setup vmaf/libvmaf/build vmaf/libvmaf \
       --prefix=/opt/ab-av1 \
