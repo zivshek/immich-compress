@@ -45,7 +45,10 @@ RUN git clone --depth 1 --branch "${VMAF_VERSION}" https://github.com/Netflix/vm
 RUN curl -fsSL -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
     && tar xf ffmpeg.tar.xz \
     && cd "ffmpeg-${FFMPEG_VERSION}" \
-    && PKG_CONFIG_PATH=/opt/ab-av1/lib/pkgconfig ./configure \
+    && export PKG_CONFIG_PATH="/opt/ab-av1/lib/pkgconfig:/usr/lib/$(uname -m)-linux-gnu/pkgconfig:/usr/share/pkgconfig" \
+    && pkg-config --modversion SvtAv1Enc \
+    && pkg-config --modversion libvmaf \
+    && ./configure \
       --prefix=/opt/ab-av1 \
       --extra-cflags=-I/opt/ab-av1/include \
       --extra-ldflags=-L/opt/ab-av1/lib \
