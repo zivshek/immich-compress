@@ -25,6 +25,7 @@ class PerceptualAv1Test(unittest.TestCase):
         self.assertEqual(command[:2], ["ab-av1", "auto-encode"])
         self.assertEqual(command[command.index("--min-vmaf") + 1], "93")
         self.assertEqual(command[command.index("--max-encoded-percent") + 1], "80")
+        self.assertEqual(command[command.index("--max-crf") + 1], "63")
         self.assertEqual(
             command[command.index("--vmaf") + 1],
             "model=path=/models/vmaf_4k_v0.6.1.json",

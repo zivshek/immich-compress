@@ -334,6 +334,8 @@ def build_av1_command(
         str(config.video_score),
         "--max-encoded-percent",
         str(max_encoded_percent),
+        "--max-crf",
+        "63",
         "--preset",
         "6",
         "--min-samples",
