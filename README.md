@@ -15,7 +15,6 @@ This repo is an early scaffold. It can:
 - download the original asset through the Immich API
 - find an efficient SVT-AV1 encode that meets a configurable VMAF quality target
 - reject results that do not meet a configurable minimum space savings
-- retain HandBrake as an optional legacy compression strategy
 - copy metadata with ExifTool
 - leave the compressed output in review state
 - queue selected or all unprocessed videos without duplicate processing
@@ -38,7 +37,6 @@ Open `http://localhost:8097`.
 
 The Docker image ships with the media tooling used by the app:
 
-- `HandBrakeCLI`
 - `ab-av1`
 - a dedicated FFmpeg build with SVT-AV1 and libvmaf
 - `exiftool`
@@ -73,7 +71,6 @@ Open Settings and configure:
 
 - the Immich URL reachable from the container, for example `http://192.168.1.50:2283`
 - an Immich API key
-- Perceptual AV1 as the compression strategy
 - a VMAF target and minimum required savings
 - concurrency
 - review or automatic replacement mode
@@ -86,16 +83,15 @@ docker compose up -d --build
 
 ## Settings
 
-Connection, compression strategy, AV1 quality target, minimum savings, concurrency,
-upscaling, and workflow mode are configured from the Settings page and stored in
+Connection, AV1 quality target, minimum savings, concurrency, and workflow mode are configured from the Settings page and stored in
 `/data/immich-compress.sqlite`. Environment variables remain optional bootstrap fallbacks.
 
 Perceptual AV1 defaults to VMAF 95 and at least 20% savings. The encoder samples the source,
 searches for an SVT-AV1 quality setting that meets both requirements, then performs the full encode. Select
 **Process All Unprocessed** on the Videos page to apply it to all existing videos.
 
-Tool path variables such as `AB_AV1`, `PERCEPTUAL_FFMPEG`, `VMAF_MODEL_DIR`,
-`HANDBRAKE_CLI`, and `EXIFTOOL` remain available for advanced deployments. The commands are
+Tool path variables such as `AB_AV1`, `PERCEPTUAL_FFMPEG`, `VMAF_MODEL_DIR`, and
+`EXIFTOOL` remain available for advanced deployments. The commands are
 already included in the published Docker image.
 
 ## AV1 encoding

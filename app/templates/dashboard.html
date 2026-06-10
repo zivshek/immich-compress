@@ -18,6 +18,10 @@
     <strong>{{ "%.2f"|format((stats.converted_saved_bytes or 0) / 1073741824) }} GB</strong>
   </div>
   <div class="panel">
+    <span class="label">Total Reduction</span>
+    <strong>{{ "%.1f"|format((stats.converted_saved_bytes or 0) / stats.converted_original_bytes * 100) ~ "%" if stats.converted_original_bytes else "-" }}</strong>
+  </div>
+  <div class="panel">
     <span class="label">Awaiting Review</span>
     <strong>{{ stats.review_jobs or 0 }}</strong>
   </div>

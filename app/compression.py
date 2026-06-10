@@ -6,8 +6,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -41,6 +39,9 @@ class VideoInfo:
     width: int
     height: int
     rotation: int
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    color_space: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,12 +55,6 @@ class CompressionResult:
 
 def is_supported_video(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
-
-
-def get_output_path(input_path: Path, output_dir: Path | None = None) -> Path:
-    if output_dir:
-        return output_dir / input_path.name
-    return input_path.with_name(f"{input_path.stem}{TEMP_OUTPUT_SUFFIX}{input_path.suffix}")
 
 
 def get_av1_output_path(input_path: Path, output_dir: Path | None = None) -> Path:
@@ -95,6 +90,9 @@ def probe_video(path: Path, config: Settings = settings) -> VideoInfo:
         width=int(video_stream["width"]),
         height=int(video_stream["height"]),
         rotation=get_stream_rotation(video_stream),
+        color_primaries=video_stream.get("color_primaries") or video_stream.get("color_primaries"),
+        color_transfer=video_stream.get("color_transfer") or video_stream.get("color_trc") or video_stream.get("color_trc"),
+        color_space=video_stream.get("color_space") or video_stream.get("colorspace"),
     )
 
 
@@ -111,191 +109,6 @@ def get_stream_rotation(video_stream: dict) -> int:
     return 0
 
 
-def get_4k_dimensions(width: int, height: int) -> tuple[int, int]:
-    long_edge = max(width, height)
-    short_edge = min(width, height)
-    scale = min(3840 / long_edge, 2160 / short_edge)
-    target_w = int(round(width * scale / 2)) * 2
-    target_h = int(round(height * scale / 2)) * 2
-    return target_w, target_h
-
-
-def make_rotation_neutral_input(input_path: Path, config: Settings = settings) -> Path:
-    fd, temp_name = tempfile.mkstemp(
-        prefix="hbed-neutral-",
-        suffix=".mp4",
-        dir=str(input_path.parent),
-    )
-    os.close(fd)
-    temp_path = Path(temp_name)
-    temp_path.unlink(missing_ok=True)
-
-    result = subprocess.run(
-        [
-            config.ffmpeg,
-            "-y",
-            "-display_rotation:v:0",
-            "0",
-            "-i",
-            str(input_path),
-            "-map",
-            "0:v",
-            "-map",
-            "0:a?",
-            "-c",
-            "copy",
-            str(temp_path),
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        errors="replace",
-    )
-    if result.returncode != 0:
-        temp_path.unlink(missing_ok=True)
-        raise RuntimeError(f"Failed to prepare rotation-neutral input: {result.stderr}")
-    return temp_path
-
-
-def compress_with_handbrake(
-    input_path: Path,
-    output_dir: Path | None = None,
-    config: Settings = settings,
-    progress_callback: Callable[[str, float | None, str | None], None] | None = None,
-    cancel_requested: Callable[[], bool] | None = None,
-) -> CompressionResult:
-    if not config.handbrake_preset or not config.handbrake_encoder:
-        raise RuntimeError("Choose a HandBrake preset and encoder in Settings before processing videos")
-    if not is_supported_video(input_path):
-        raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
-
-    output_path = get_output_path(input_path, output_dir)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path == input_path:
-        raise RuntimeError("Output path is the same as input path")
-    if output_path.exists():
-        raise RuntimeError(f"Output already exists: {output_path}")
-
-    original_size = input_path.stat().st_size
-    if progress_callback:
-        progress_callback("Probing", 0, f"Original file size: {original_size / 1048576:.1f} MB")
-    video_info = probe_video(input_path, config)
-    if config.upscale_to_4k:
-        target_w, target_h = get_4k_dimensions(video_info.width, video_info.height)
-    else:
-        target_w, target_h = video_info.width, video_info.height
-
-    input_for_handbrake = input_path
-    temp_input: Path | None = None
-    try:
-        if video_info.rotation % 360 != 0:
-            if progress_callback:
-                progress_callback("Preparing", None, f"Neutralizing rotation metadata: {video_info.rotation}")
-            temp_input = make_rotation_neutral_input(input_path, config)
-            input_for_handbrake = temp_input
-
-        command = [
-            config.handbrake_cli,
-            "-i",
-            str(input_for_handbrake),
-            "-o",
-            str(output_path),
-            "--non-anamorphic",
-            "--width",
-            str(target_w),
-            "--height",
-            str(target_h),
-            "-O",
-            "--preset",
-            config.handbrake_preset,
-            "--encoder",
-            config.handbrake_encoder,
-        ]
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-            errors="replace",
-        )
-
-        def stop_when_canceled() -> None:
-            while process.poll() is None:
-                if cancel_requested and cancel_requested():
-                    process.terminate()
-                    return
-                time.sleep(0.25)
-
-        if cancel_requested:
-            threading.Thread(target=stop_when_canceled, daemon=True).start()
-        log_lines: list[str] = []
-        last_stage = ""
-        last_percent = -1.0
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            if cancel_requested and cancel_requested():
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                output_path.unlink(missing_ok=True)
-                raise InterruptedError("Job canceled")
-            line = raw_line.strip()
-            if not line:
-                continue
-            log_lines.append(line)
-            progress = parse_handbrake_progress(line)
-            if progress:
-                stage, percent = progress
-                if progress_callback and (stage != last_stage or percent - last_percent >= 1):
-                    progress_callback(stage, percent, compact_log_line(line))
-                    last_stage = stage
-                    last_percent = percent
-            elif progress_callback and should_log_handbrake_line(line):
-                progress_callback(last_stage or "Encoding", None, compact_log_line(line))
-
-        process.wait()
-        logs = "\n".join(log_lines)
-        if cancel_requested and cancel_requested():
-            output_path.unlink(missing_ok=True)
-            raise InterruptedError("Job canceled")
-        if process.returncode != 0:
-            output_path.unlink(missing_ok=True)
-            raise RuntimeError(f"HandBrake failed with exit code {process.returncode}\n{logs[-4000:]}")
-        if not output_path.exists() or output_path.stat().st_size == 0:
-            raise RuntimeError("HandBrake output file does not exist or is empty")
-
-        if progress_callback:
-            progress_callback("Metadata", 100, "Copying metadata with ExifTool")
-        copy_metadata(input_path, output_path, config)
-        artifact = Path(str(output_path) + "_original")
-        artifact.unlink(missing_ok=True)
-
-        compressed_size = output_path.stat().st_size
-        if progress_callback:
-            saved = original_size - compressed_size
-            pct = (saved / original_size * 100) if original_size else 0
-            progress_callback(
-                "Complete",
-                100,
-                f"Compressed to {compressed_size / 1048576:.1f} MB; saved {saved / 1048576:.1f} MB ({pct:.1f}%).",
-            )
-        return CompressionResult(
-            output_path=output_path,
-            original_size=original_size,
-            compressed_size=compressed_size,
-            saved_bytes=original_size - compressed_size,
-            logs=logs,
-        )
-    finally:
-        if temp_input:
-            temp_input.unlink(missing_ok=True)
-
-
 def compress_video(
     input_path: Path,
     output_dir: Path | None = None,
@@ -303,11 +116,7 @@ def compress_video(
     progress_callback: Callable[[str, float | None, str | None], None] | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> CompressionResult:
-    if config.compression_mode == "perceptual-av1":
-        return compress_with_perceptual_av1(
-            input_path, output_dir, config, progress_callback, cancel_requested
-        )
-    return compress_with_handbrake(
+    return compress_with_perceptual_av1(
         input_path, output_dir, config, progress_callback, cancel_requested
     )
 
@@ -335,15 +144,15 @@ def build_av1_command(
         "--max-encoded-percent",
         str(max_encoded_percent),
         "--max-crf",
-        "63",
+        "45",
         "--preset",
         "6",
         "--min-samples",
         "3",
         "--sample-every",
-        "8m",
+        "30s",
         "--sample-duration",
-        "12s",
+        "6s",
         "--vmaf",
         f"model=path={(config.vmaf_model_dir / model).as_posix()}",
         "--enc-input",
@@ -408,32 +217,45 @@ def compress_with_perceptual_av1(
 
         if progress_callback:
             progress_callback("Remuxing", 100, "Restoring original audio, chapters, and metadata")
+        cmd: list[str] = [
+            config.perceptual_ffmpeg,
+            "-hide_banner",
+            "-y",
+            "-noautorotate",
+            "-i",
+            str(video_only_path),
+            "-i",
+            str(input_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a?",
+            "-map_metadata",
+            "1",
+            "-map_chapters",
+            "1",
+        ]
+
+        # Preserve color metadata (if present in source) by setting stream metadata
+        if video_info.color_primaries:
+            cmd += ["-metadata:s:v:0", f"color_primaries={video_info.color_primaries}"]
+        if video_info.color_transfer:
+            cmd += ["-metadata:s:v:0", f"color_trc={video_info.color_transfer}"]
+        if video_info.color_space:
+            cmd += ["-metadata:s:v:0", f"colorspace={video_info.color_space}"]
+
+        cmd += [
+            "-c",
+            "copy",
+            "-tag:v",
+            "av01",
+            "-movflags",
+            "+faststart+use_metadata_tags",
+            str(output_path),
+        ]
+
         remux = subprocess.run(
-            [
-                config.perceptual_ffmpeg,
-                "-hide_banner",
-                "-y",
-                "-noautorotate",
-                "-i",
-                str(video_only_path),
-                "-i",
-                str(input_path),
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a?",
-                "-map_metadata",
-                "1",
-                "-map_chapters",
-                "1",
-                "-c",
-                "copy",
-                "-tag:v",
-                "av01",
-                "-movflags",
-                "+faststart+use_metadata_tags",
-                str(output_path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             errors="replace",
@@ -530,41 +352,6 @@ def parse_command_percent(line: str) -> float | None:
     if not match:
         return None
     return min(100, float(match.group(1)))
-
-
-def parse_handbrake_progress(line: str) -> tuple[str, float] | None:
-    if "Scanning title" in line and "%" in line:
-        percent = percent_before_marker(line)
-        if percent is not None:
-            return "Scanning", percent
-    if "Encoding: task" in line and "%" in line:
-        percent = percent_before_marker(line)
-        if percent is not None:
-            return "Encoding", percent
-    return None
-
-
-def percent_before_marker(line: str) -> float | None:
-    try:
-        return float(line.split("%", 1)[0].split(",")[-1].strip())
-    except ValueError:
-        return None
-
-
-def should_log_handbrake_line(line: str) -> bool:
-    interesting = (
-        "Using preset:",
-        "encoder:",
-        "quality:",
-        "Output geometry",
-        "Starting Task",
-        "Encode done",
-        "HandBrake has exited",
-        "ERROR:",
-        "Cannot load",
-        "Failure",
-    )
-    return any(marker in line for marker in interesting)
 
 
 def compact_log_line(line: str, max_length: int = 220) -> str:

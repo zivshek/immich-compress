@@ -52,14 +52,27 @@
 </section>
 {% endif %}
 <section>
-  <h1>Jobs</h1>
+  <div class="toolbar jobs-toolbar">
+    <form method="get" action="/jobs" class="inline-form">
+      <select name="state" aria-label="Filter jobs by state">
+        <option value="">All states</option>
+        {% for state in states %}
+        <option value="{{ state }}" {% if state_filter == state %}selected{% endif %}>{{ state }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Filter</button>
+    </form>
+    <form method="post" action="/jobs/reprocess-failed">
+      <button class="warning-button" type="submit" onclick="return confirm('Reprocess every failed compression job?')">Reprocess All Failed</button>
+    </form>
+  </div>
   {% include "partials/jobs_table.html" %}
   {% if total_pages > 1 %}
   <div class="pager video-pager">
     <span>
-      {% if has_previous %}<a class="button secondary" href="/jobs?page={{ page - 1 }}">Previous</a>{% endif %}
+      {% if has_previous %}<a class="button secondary" href="{{ previous_url }}">Previous</a>{% endif %}
       <span>Page {{ page }} of {{ total_pages }}</span>
-      {% if has_next %}<a class="button secondary" href="/jobs?page={{ page + 1 }}">Next</a>{% endif %}
+      {% if has_next %}<a class="button secondary" href="{{ next_url }}">Next</a>{% endif %}
     </span>
   </div>
   {% endif %}

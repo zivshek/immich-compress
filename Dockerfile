@@ -85,7 +85,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ffmpeg \
-      handbrake-cli \
       libimage-exiftool-perl \
       libsvtav1enc1 \
       libtcmalloc-minimal4 \

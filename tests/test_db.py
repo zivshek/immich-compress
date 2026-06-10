@@ -61,9 +61,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.set_setting("immich_url", "http://immich:2283")
                 db.set_setting("immich_api_key", "secret")
                 db.set_setting("max_concurrent_jobs", "3")
-                db.set_setting("upscale_to_4k", "true")
                 db.set_setting("video_taken_before", "2026-06-01T12:00:00.000Z")
-                db.set_setting("compression_mode", "perceptual-av1")
                 db.set_setting("video_score", "93")
                 db.set_setting("min_savings_percent", "20")
                 configured = effective_settings()
@@ -88,12 +86,13 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(db.list_jobs(2)[0]["asset_id"], "pending-id")
                 self.assertEqual(db.list_jobs(1, 1)[0]["asset_id"], "original-id")
                 self.assertEqual(db.count_jobs(), 2)
+                self.assertEqual(db.count_jobs("pending"), 1)
+                self.assertEqual(db.list_jobs(10, state="pending")[0]["asset_id"], "pending-id")
+                self.assertEqual(db.list_job_states(), ["compressing", "pending"])
                 self.assertEqual(configured.immich_url, "http://immich:2283")
                 self.assertEqual(configured.immich_api_key, "secret")
                 self.assertEqual(configured.max_concurrent_jobs, 3)
-                self.assertTrue(configured.upscale_to_4k)
                 self.assertEqual(configured.video_taken_before, "2026-06-01T12:00:00.000Z")
-                self.assertEqual(configured.compression_mode, "perceptual-av1")
                 self.assertEqual(configured.video_score, 93)
                 self.assertEqual(configured.min_savings_percent, 20)
 
@@ -137,6 +136,17 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(canceled_job["compressed_size"], 222222)
                 self.assertIn("Canceled and cleaned up.", canceled_job["logs"])
                 self.assertIn("Marked as already processed", canceled_job["logs"])
+
+                db.upsert_job("converted-id", "converted.mp4", "copied-and-trashed")
+                db.update_job(
+                    "converted-id",
+                    original_size=1000,
+                    compressed_size=600,
+                    saved_bytes=400,
+                )
+                stats = db.get_dashboard_stats()
+                self.assertEqual(stats["converted_original_bytes"], 346678)
+                self.assertEqual(stats["converted_saved_bytes"], 400)
             finally:
                 db.settings = original_settings
 

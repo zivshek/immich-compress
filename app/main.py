@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import db
-from app.config import effective_settings, normalize_compression_mode, normalize_mode, settings
+from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
 from app.jobs import (
     job_queue,
@@ -21,7 +21,7 @@ from app.jobs import (
     reject_job as reject_work_job,
     upload_copy,
 )
-from app.tools import HandBrakeOption, handbrake_encoders, handbrake_presets, tool_statuses
+from app.tools import tool_statuses
 
 
 app = FastAPI(title="Immich Compress")
@@ -181,16 +181,11 @@ def videos_url(page: int, search: str = "") -> str:
     return f"/videos?{urlencode(query)}"
 
 
-def include_current_option(
-    options: list[HandBrakeOption],
-    current: str,
-) -> list[HandBrakeOption]:
-    if current and all(option.value != current for option in options):
-        return [
-            HandBrakeOption(current, "Configured value; not reported by this HandBrake installation."),
-            *options,
-        ]
-    return options
+def jobs_url(page: int, state: str = "") -> str:
+    query = {"page": max(1, page)}
+    if state:
+        query["state"] = state
+    return f"/jobs?{urlencode(query)}"
 
 
 def settings_page_context(message: str | None = None) -> dict[str, object]:
@@ -198,17 +193,12 @@ def settings_page_context(message: str | None = None) -> dict[str, object]:
     return {
         "settings": current,
         "message": message,
-        "presets": include_current_option(handbrake_presets(current), current.handbrake_preset),
-        "encoders": include_current_option(handbrake_encoders(current), current.handbrake_encoder),
     }
 
 
 def processing_is_configured() -> bool:
     current = effective_settings()
-    compression_configured = current.compression_mode == "perceptual-av1" or bool(
-        current.handbrake_preset and current.handbrake_encoder
-    )
-    return bool(current.immich_url and current.immich_api_key and compression_configured)
+    return bool(current.immich_url and current.immich_api_key)
 
 
 @app.on_event("startup")
@@ -249,14 +239,10 @@ def save_settings(
     request: Request,
     immich_url: str = Form(...),
     immich_api_key: str = Form(...),
-    compression_mode: str = Form(...),
     video_score: int = Form(...),
     min_savings_percent: int = Form(...),
-    handbrake_preset: str = Form(default=""),
-    handbrake_encoder: str = Form(default=""),
     video_taken_before: str = Form(default=""),
     max_concurrent_jobs: int = Form(...),
-    upscale_to_4k: str | None = Form(default=None),
     replacement_mode: str = Form(...),
 ):
     immich_url = immich_url.strip().rstrip("/")
@@ -268,18 +254,12 @@ def save_settings(
         current,
         immich_url=immich_url,
         immich_api_key=saved_api_key,
-        compression_mode=normalize_compression_mode(compression_mode),
         video_score=video_score,
         min_savings_percent=min_savings_percent,
-        handbrake_preset=handbrake_preset,
-        handbrake_encoder=handbrake_encoder,
         video_taken_before=video_taken_before,
         max_concurrent_jobs=max_concurrent_jobs,
-        upscale_to_4k=upscale_to_4k == "true",
         replacement_mode=normalize_mode(replacement_mode),
     )
-    presets = include_current_option(handbrake_presets(current), current.handbrake_preset)
-    encoders = include_current_option(handbrake_encoders(current), current.handbrake_encoder)
     errors = []
     if not immich_url:
         errors.append("Immich URL is required.")
@@ -292,13 +272,6 @@ def save_settings(
             datetime.fromisoformat(video_taken_before.replace("Z", "+00:00"))
         except ValueError:
             errors.append("Video cutoff must be a valid date and time.")
-    if compression_mode not in {"handbrake", "perceptual-av1"}:
-        errors.append("Choose a supported compression strategy.")
-    if compression_mode == "handbrake":
-        if handbrake_preset not in {option.value for option in presets}:
-            errors.append("Choose a preset reported by HandBrakeCLI.")
-        if handbrake_encoder not in {option.value for option in encoders}:
-            errors.append("Choose an encoder reported by HandBrakeCLI.")
     if not 1 <= video_score <= 100:
         errors.append("Video VMAF target must be between 1 and 100.")
     if not 1 <= min_savings_percent <= 99:
@@ -312,8 +285,6 @@ def save_settings(
             {
                 "settings": submitted,
                 "message": " ".join(errors),
-                "presets": presets,
-                "encoders": encoders,
             },
             status_code=400,
         )
@@ -321,14 +292,10 @@ def save_settings(
     db.set_setting("immich_url", immich_url)
     if immich_api_key:
         db.set_setting("immich_api_key", immich_api_key)
-    db.set_setting("compression_mode", normalize_compression_mode(compression_mode))
     db.set_setting("video_score", str(video_score))
     db.set_setting("min_savings_percent", str(min_savings_percent))
-    db.set_setting("handbrake_preset", handbrake_preset)
-    db.set_setting("handbrake_encoder", handbrake_encoder)
     db.set_setting("video_taken_before", video_taken_before)
     db.set_setting("max_concurrent_jobs", str(max_concurrent_jobs))
-    db.set_setting("upscale_to_4k", str(upscale_to_4k == "true"))
     db.set_setting("replacement_mode", normalize_mode(replacement_mode))
     return templates.TemplateResponse(
         request,
@@ -338,10 +305,18 @@ def save_settings(
 
 
 @app.get("/jobs")
-def jobs_page(request: Request, page: int = Query(default=1, ge=1)):
+def jobs_page(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    state: str = Query(default=""),
+):
     queue_status = job_queue.snapshot()
+    states = db.list_job_states()
+    state = state.strip()
+    if state and state not in states:
+        state = ""
     page_size = 25
-    total = db.count_jobs()
+    total = db.count_jobs(state)
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, total_pages)
     return templates.TemplateResponse(
@@ -349,12 +324,16 @@ def jobs_page(request: Request, page: int = Query(default=1, ge=1)):
         "jobs.html",
         {
             "settings": effective_settings(),
-            "jobs": db.list_jobs(page_size, (page - 1) * page_size),
+            "jobs": db.list_jobs(page_size, (page - 1) * page_size, state),
             "queue": queue_status,
             "page": page,
             "total_pages": total_pages,
             "has_previous": page > 1,
             "has_next": page < total_pages,
+            "state_filter": state,
+            "states": states,
+            "previous_url": jobs_url(page - 1, state),
+            "next_url": jobs_url(page + 1, state),
         },
     )
 
@@ -494,6 +473,18 @@ def process_all_videos():
 def cancel_all_jobs():
     job_queue.cancel_all()
     return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/jobs/reprocess-failed")
+def reprocess_failed_jobs():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    for job in db.list_jobs_by_states({"failed"}):
+        try:
+            job_queue.retry(job["asset_id"])
+        except Exception as exc:
+            db.append_job_log(job["asset_id"], f"Bulk retry could not start: {exc}")
+    return RedirectResponse(jobs_url(1, "failed"), status_code=303)
 
 
 @app.post("/jobs/{asset_id}/cancel")

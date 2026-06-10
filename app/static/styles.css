@@ -181,6 +181,10 @@ h1 {
   justify-content: flex-end;
 }
 
+.jobs-toolbar {
+  justify-content: space-between;
+}
+
 .video-search {
   align-items: center;
   display: flex;

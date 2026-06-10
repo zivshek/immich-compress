@@ -7,6 +7,7 @@
         <th>Original</th>
         <th>Compressed</th>
         <th>Saved</th>
+        <th>Reduction</th>
         <th>Processed</th>
       </tr>
     </thead>
@@ -21,10 +22,11 @@
         <td>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size is not none else "-" }}</td>
         <td>{{ "%.1f"|format(job.compressed_size / 1048576) ~ " MB" if job.compressed_size is not none else "-" }}</td>
         <td>{{ "%.1f"|format(job.saved_bytes / 1048576) ~ " MB" if job.saved_bytes is not none else "-" }}</td>
+        <td>{{ "%.1f"|format(job.saved_bytes / job.original_size * 100) ~ "%" if job.saved_bytes is not none and job.original_size else "-" }}</td>
         <td>{{ job.process_started_at }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="empty">No jobs yet.</td></tr>
+      <tr><td colspan="7" class="empty">No jobs found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
