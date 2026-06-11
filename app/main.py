@@ -239,8 +239,7 @@ def save_settings(
     request: Request,
     immich_url: str = Form(...),
     immich_api_key: str = Form(...),
-    video_score: int = Form(...),
-    min_savings_percent: int = Form(...),
+    video_crf: int = Form(...),
     video_taken_before: str = Form(default=""),
     max_concurrent_jobs: int = Form(...),
     replacement_mode: str = Form(...),
@@ -254,8 +253,7 @@ def save_settings(
         current,
         immich_url=immich_url,
         immich_api_key=saved_api_key,
-        video_score=video_score,
-        min_savings_percent=min_savings_percent,
+        video_crf=video_crf,
         video_taken_before=video_taken_before,
         max_concurrent_jobs=max_concurrent_jobs,
         replacement_mode=normalize_mode(replacement_mode),
@@ -272,10 +270,8 @@ def save_settings(
             datetime.fromisoformat(video_taken_before.replace("Z", "+00:00"))
         except ValueError:
             errors.append("Video cutoff must be a valid date and time.")
-    if not 1 <= video_score <= 100:
-        errors.append("Video VMAF target must be between 1 and 100.")
-    if not 1 <= min_savings_percent <= 99:
-        errors.append("Minimum savings must be between 1 and 99 percent.")
+    if not 0 <= video_crf <= 63:
+        errors.append("Video CRF must be between 0 and 63.")
     if not 1 <= max_concurrent_jobs <= 8:
         errors.append("Concurrent jobs must be between 1 and 8.")
     if errors:
@@ -292,8 +288,7 @@ def save_settings(
     db.set_setting("immich_url", immich_url)
     if immich_api_key:
         db.set_setting("immich_api_key", immich_api_key)
-    db.set_setting("video_score", str(video_score))
-    db.set_setting("min_savings_percent", str(min_savings_percent))
+    db.set_setting("video_crf", str(video_crf))
     db.set_setting("video_taken_before", video_taken_before)
     db.set_setting("max_concurrent_jobs", str(max_concurrent_jobs))
     db.set_setting("replacement_mode", normalize_mode(replacement_mode))
@@ -302,6 +297,14 @@ def save_settings(
         "settings.html",
         settings_page_context("Settings saved. New jobs will use these values."),
     )
+
+
+@app.post("/settings/crf")
+def save_dashboard_crf(video_crf: int = Form(...)):
+    if not 0 <= video_crf <= 63:
+        raise HTTPException(status_code=400, detail="Video CRF must be between 0 and 63")
+    db.set_setting("video_crf", str(video_crf))
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/jobs")

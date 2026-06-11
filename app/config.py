@@ -35,17 +35,12 @@ class Settings:
     ffmpeg: str = os.environ.get("FFMPEG", "ffmpeg")
     ffprobe: str = os.environ.get("FFPROBE", "ffprobe")
     exiftool: str = os.environ.get("EXIFTOOL", "exiftool")
-    ab_av1: str = os.environ.get("AB_AV1", "ab-av1")
-    perceptual_ffmpeg: str = os.environ.get("PERCEPTUAL_FFMPEG", "/opt/ab-av1/bin/ffmpeg")
-    vmaf_model_dir: Path = Path(
-        os.environ.get("VMAF_MODEL_DIR", "/opt/ab-av1/share/vmaf/model")
-    )
-    video_score: int = env_int("VIDEO_SCORE", 95)
+    av1_ffmpeg: str = os.environ.get("AV1_FFMPEG", "/opt/av1/bin/ffmpeg")
+    video_crf: int = env_int("VIDEO_CRF", 28)
     video_taken_before: str = os.environ.get("VIDEO_TAKEN_BEFORE", "")
     poll_interval_seconds: int = env_int("POLL_INTERVAL_SECONDS", 300)
     auto_process_new_uploads: bool = env_bool("AUTO_PROCESS_NEW_UPLOADS", False)
     max_concurrent_jobs: int = env_int("MAX_CONCURRENT_JOBS", 1)
-    min_savings_percent: int = env_int("MIN_SAVINGS_PERCENT", 20)
     replacement_mode: str = normalize_mode(os.environ.get("REPLACEMENT_MODE", "review"))
 
     @property
@@ -64,10 +59,7 @@ def effective_settings() -> Settings:
         settings,
         immich_url=db.get_setting("immich_url", settings.immich_url),
         immich_api_key=db.get_setting("immich_api_key", settings.immich_api_key),
-        video_score=int(db.get_setting("video_score", str(settings.video_score))),
-        min_savings_percent=int(
-            db.get_setting("min_savings_percent", str(settings.min_savings_percent))
-        ),
+        video_crf=int(db.get_setting("video_crf", str(settings.video_crf))),
         video_taken_before=db.get_setting("video_taken_before", settings.video_taken_before),
         max_concurrent_jobs=max(
             1,

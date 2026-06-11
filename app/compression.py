@@ -116,7 +116,7 @@ def compress_video(
     progress_callback: Callable[[str, float | None, str | None], None] | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> CompressionResult:
-    return compress_with_perceptual_av1(
+    return compress_with_fixed_crf_av1(
         input_path, output_dir, config, progress_callback, cancel_requested
     )
 
@@ -128,23 +128,30 @@ def build_av1_command(
     config: Settings,
 ) -> list[str]:
     return [
-        config.ab_av1,
-        "auto-encode",
-        "--input",
+        config.av1_ffmpeg,
+        "-hide_banner",
+        "-y",
+        "-noautorotate",
+        "-i",
         str(input_path),
-        "--output",
-        str(video_only_path),
-        "--video-only",
-        "--max-crf",
-        "28",
-        "--preset",
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c:v",
+        "libsvtav1",
+        "-preset",
         "6",
-        "--enc-input",
-        "noautorotate",
+        "-crf",
+        str(config.video_crf),
+        "-pix_fmt",
+        "yuv420p10le",
+        "-fps_mode",
+        "passthrough",
+        str(video_only_path),
     ]
 
 
-def compress_with_perceptual_av1(
+def compress_with_fixed_crf_av1(
     input_path: Path,
     output_dir: Path | None = None,
     config: Settings = settings,
@@ -163,26 +170,22 @@ def compress_with_perceptual_av1(
     original_size = input_path.stat().st_size
     video_info = probe_video(input_path, config)
     log_lines: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="ab-av1-", dir=output_path.parent) as directory:
+    with tempfile.TemporaryDirectory(prefix="av1-", dir=output_path.parent) as directory:
         temp_dir = Path(directory)
         video_only_path = temp_dir / "video-only-av1.mp4"
         env = os.environ.copy()
-        env["AB_AV1_TEMP_DIR"] = str(temp_dir / "samples")
-        env["XDG_CACHE_HOME"] = str(temp_dir / "cache")
-        Path(env["AB_AV1_TEMP_DIR"]).mkdir()
-        Path(env["XDG_CACHE_HOME"]).mkdir()
         env["PATH"] = os.pathsep.join(
-            [str(Path(config.perceptual_ffmpeg).parent), env.get("PATH", "")]
+            [str(Path(config.av1_ffmpeg).parent), env.get("PATH", "")]
         )
-        library_path = str(Path(config.perceptual_ffmpeg).parent.parent / "lib")
+        library_path = str(Path(config.av1_ffmpeg).parent.parent / "lib")
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             [library_path, env.get("LD_LIBRARY_PATH", "")]
         )
         if progress_callback:
             progress_callback(
-                "Analyzing",
+                "Encoding",
                 0,
-                "Encoding AV1 with fixed CRF 28 and preserving original audio, chapters, and metadata.",
+                f"Encoding AV1 in one pass at CRF {config.video_crf}.",
             )
         run_streaming_command(
             build_av1_command(input_path, video_only_path, video_info, config),
@@ -190,15 +193,15 @@ def compress_with_perceptual_av1(
             log_lines,
             progress_callback,
             cancel_requested,
-            "Analyzing",
+            "Encoding",
         )
         if not video_only_path.is_file() or video_only_path.stat().st_size == 0:
-            raise RuntimeError("ab-av1 output file does not exist or is empty")
+            raise RuntimeError("AV1 output file does not exist or is empty")
 
         if progress_callback:
             progress_callback("Remuxing", 100, "Restoring original audio, chapters, and metadata")
         cmd: list[str] = [
-            config.perceptual_ffmpeg,
+            config.av1_ffmpeg,
             "-hide_banner",
             "-y",
             "-noautorotate",
@@ -258,12 +261,6 @@ def compress_with_perceptual_av1(
     savings_percent = (
         (original_size - compressed_size) / original_size * 100 if original_size else 0
     )
-    if savings_percent < config.min_savings_percent:
-        output_path.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"AV1 output saved only {savings_percent:.1f}%; required "
-            f"{config.min_savings_percent}%"
-        )
     if progress_callback:
         progress_callback(
             "Complete",

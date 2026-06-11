@@ -185,6 +185,15 @@ h1 {
   justify-content: space-between;
 }
 
+.crf-toolbar .inline-form {
+  align-items: end;
+  max-width: 520px;
+}
+
+.crf-toolbar label {
+  flex: 1;
+}
+
 .video-search {
   align-items: center;
   display: flex;

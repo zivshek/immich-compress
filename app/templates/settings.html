@@ -19,16 +19,11 @@
     </fieldset>
 
     <fieldset>
-      <legend>Perceptual AV1 Compression</legend>
+      <legend>AV1 Compression</legend>
       <label>
-        Video VMAF Target
-        <input name="video_score" type="number" min="1" max="100" step="1" value="{{ settings.video_score }}" required>
-        <small>95 is visually transparent for most footage. Lower values save more space; higher values take longer and may fail the savings requirement.</small>
-      </label>
-      <label>
-        Minimum Savings
-        <input name="min_savings_percent" type="number" min="1" max="99" step="1" value="{{ settings.min_savings_percent }}" required>
-        <small>Rejects an encode unless it saves at least this percentage. The AV1 search also uses this limit to avoid wasteful candidates.</small>
+        Video CRF
+        <input name="video_crf" type="number" min="0" max="63" step="1" value="{{ settings.video_crf }}" required>
+        <small>Controls one-pass SVT-AV1 quality. 28 is a high-quality default; lower values produce larger, higher-quality files, while higher values save more space.</small>
       </label>
       <label>
         Concurrent Jobs

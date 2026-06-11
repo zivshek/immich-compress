@@ -1,7 +1,7 @@
 # Immich Compress
 
-Immich Compress is a sidecar app for perceptually compressing existing Immich videos with
-SVT-AV1 while preserving resolution, orientation, audio, chapters, and metadata.
+Immich Compress is a sidecar app for compressing existing Immich videos with SVT-AV1 while
+preserving resolution, orientation, audio, chapters, and metadata.
 
 It is intentionally separate from Immich so you can maintain and deploy it without carrying an Immich source fork.
 
@@ -13,8 +13,7 @@ This repo is an early scaffold. It can:
 - store job state in SQLite under `/data`
 - accept an Immich asset ID or URL
 - download the original asset through the Immich API
-- find an efficient SVT-AV1 encode that meets a configurable VMAF quality target
-- reject results that do not meet a configurable minimum space savings
+- encode videos with SVT-AV1 in one pass at a configurable fixed CRF
 - copy metadata with ExifTool
 - leave the compressed output in review state
 - queue selected or all unprocessed videos without duplicate processing
@@ -37,8 +36,7 @@ Open `http://localhost:8097`.
 
 The Docker image ships with the media tooling used by the app:
 
-- `ab-av1`
-- a dedicated FFmpeg build with SVT-AV1 and libvmaf
+- a dedicated FFmpeg build with SVT-AV1
 - `exiftool`
 - `ffmpeg`
 - `ffprobe`
@@ -71,7 +69,7 @@ Open Settings and configure:
 
 - the Immich URL reachable from the container, for example `http://192.168.1.50:2283`
 - an Immich API key
-- a VMAF target and minimum required savings
+- an AV1 CRF quality setting
 - concurrency
 - review or automatic replacement mode
 
@@ -83,22 +81,19 @@ docker compose up -d --build
 
 ## Settings
 
-Connection, AV1 quality target, minimum savings, concurrency, and workflow mode are configured from the Settings page and stored in
+Connection, AV1 CRF, concurrency, and workflow mode are configured from the Settings page and stored in
 `/data/immich-compress.sqlite`. Environment variables remain optional bootstrap fallbacks.
 
-Perceptual AV1 defaults to VMAF 95 and at least 20% savings. The encoder samples the source,
-searches for an SVT-AV1 quality setting that meets both requirements, then performs the full encode. Select
-**Process All Unprocessed** on the Videos page to apply it to all existing videos.
+AV1 encoding defaults to CRF 28 and performs a single full encode without sampling or
+comparison passes. Lower CRF values retain more quality and produce larger files; higher values
+save more space. Select **Process All Unprocessed** on the Videos page to apply it to all existing videos.
 
-Tool path variables such as `AB_AV1`, `PERCEPTUAL_FFMPEG`, `VMAF_MODEL_DIR`, and
-`EXIFTOOL` remain available for advanced deployments. The commands are
+Tool path variables such as `AV1_FFMPEG` and `EXIFTOOL` remain available for advanced deployments. The commands are
 already included in the published Docker image.
 
 ## AV1 encoding
 
-Perceptual AV1 uses CPU-based SVT-AV1. It is slower than GPU encoding, but produces smaller
-files at the same perceived quality. VMAF analysis also uses substantial CPU time because it
-compares several sampled encodes before the final encode. No GPU passthrough is required.
+AV1 encoding uses CPU-based SVT-AV1 at the configured fixed CRF. No GPU passthrough is required.
 
 ## Accepting reviewed files
 

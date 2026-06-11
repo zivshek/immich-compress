@@ -62,8 +62,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                 db.set_setting("immich_api_key", "secret")
                 db.set_setting("max_concurrent_jobs", "3")
                 db.set_setting("video_taken_before", "2026-06-01T12:00:00.000Z")
-                db.set_setting("video_score", "93")
-                db.set_setting("min_savings_percent", "20")
+                db.set_setting("video_crf", "30")
                 configured = effective_settings()
 
                 with closing(sqlite3.connect(db.settings.database_path)) as connection:
@@ -93,8 +92,7 @@ class DatabaseMigrationTest(unittest.TestCase):
                 self.assertEqual(configured.immich_api_key, "secret")
                 self.assertEqual(configured.max_concurrent_jobs, 3)
                 self.assertEqual(configured.video_taken_before, "2026-06-01T12:00:00.000Z")
-                self.assertEqual(configured.video_score, 93)
-                self.assertEqual(configured.min_savings_percent, 20)
+                self.assertEqual(configured.video_crf, 30)
 
                 marked = db.mark_asset_as_processed(
                     {

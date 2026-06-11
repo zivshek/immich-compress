@@ -31,6 +31,17 @@
   </div>
 </section>
 
+<section class="toolbar crf-toolbar">
+  <form method="post" action="/settings/crf" class="inline-form">
+    <label>
+      AV1 CRF
+      <input name="video_crf" type="number" min="0" max="63" step="1" value="{{ settings.video_crf }}" required>
+      <small>One-pass SVT-AV1 quality. Lower is higher quality and larger; default is 28.</small>
+    </label>
+    <button type="submit">Save CRF</button>
+  </form>
+</section>
+
 <section class="tool-grid">
   {% for tool in tools %}
   <div class="panel tool-panel">
