@@ -23,7 +23,7 @@ class PerceptualAv1Test(unittest.TestCase):
         )
 
         self.assertEqual(command[:2], ["ab-av1", "auto-encode"])
-        self.assertEqual(command[command.index("--crf") + 1], "28")
+        self.assertEqual(command[command.index("--max-crf") + 1], "28")
         self.assertEqual(command[-2:], ["--enc-input", "noautorotate"])
 
     def test_builds_fixed_crf_command_for_non_4k_video(self) -> None:
@@ -34,7 +34,7 @@ class PerceptualAv1Test(unittest.TestCase):
             Settings(vmaf_model_dir=Path("/models")),
         )
 
-        self.assertEqual(command[command.index("--crf") + 1], "28")
+        self.assertEqual(command[command.index("--max-crf") + 1], "28")
 
     def test_parses_progress_percentage(self) -> None:
         self.assertEqual(parse_command_percent("encoding 47%, eta 1 minute"), 47)

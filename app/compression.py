@@ -135,7 +135,7 @@ def build_av1_command(
         "--output",
         str(video_only_path),
         "--video-only",
-        "--crf",
+        "--max-crf",
         "28",
         "--preset",
         "6",
