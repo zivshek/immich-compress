@@ -238,7 +238,7 @@ def settings_page(request: Request):
 def save_settings(
     request: Request,
     immich_url: str = Form(...),
-    immich_api_key: str = Form(...),
+    immich_api_key: str = Form(default=""),
     video_crf: int = Form(...),
     video_taken_before: str = Form(default=""),
     max_concurrent_jobs: int = Form(...),
