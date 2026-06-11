@@ -8,7 +8,7 @@ from app.config import Settings
 
 
 class PerceptualAv1Test(unittest.TestCase):
-    def test_builds_4k_av1_command_with_quality_and_savings_targets(self) -> None:
+    def test_builds_4k_av1_command_with_fixed_crf(self) -> None:
         config = Settings(
             video_score=93,
             min_savings_percent=20,
@@ -23,16 +23,10 @@ class PerceptualAv1Test(unittest.TestCase):
         )
 
         self.assertEqual(command[:2], ["ab-av1", "auto-encode"])
-        self.assertEqual(command[command.index("--min-vmaf") + 1], "93")
-        self.assertEqual(command[command.index("--max-encoded-percent") + 1], "80")
-        self.assertEqual(command[command.index("--max-crf") + 1], "63")
-        self.assertEqual(
-            command[command.index("--vmaf") + 1],
-            "model=path=/models/vmaf_4k_v0.6.1.json",
-        )
+        self.assertEqual(command[command.index("--crf") + 1], "28")
         self.assertEqual(command[-2:], ["--enc-input", "noautorotate"])
 
-    def test_uses_standard_model_for_non_4k_video(self) -> None:
+    def test_builds_fixed_crf_command_for_non_4k_video(self) -> None:
         command = build_av1_command(
             Path("input.mp4"),
             Path("output.mp4"),
@@ -40,10 +34,7 @@ class PerceptualAv1Test(unittest.TestCase):
             Settings(vmaf_model_dir=Path("/models")),
         )
 
-        self.assertEqual(
-            command[command.index("--vmaf") + 1],
-            "model=path=/models/vmaf_v0.6.1.json",
-        )
+        self.assertEqual(command[command.index("--crf") + 1], "28")
 
     def test_parses_progress_percentage(self) -> None:
         self.assertEqual(parse_command_percent("encoding 47%, eta 1 minute"), 47)

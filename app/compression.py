@@ -127,10 +127,6 @@ def build_av1_command(
     video_info: VideoInfo,
     config: Settings,
 ) -> list[str]:
-    model = "vmaf_v0.6.1.json"
-    if video_info.width > 2560 and video_info.height > 1440:
-        model = "vmaf_4k_v0.6.1.json"
-    max_encoded_percent = max(1, min(99, 100 - config.min_savings_percent))
     return [
         config.ab_av1,
         "auto-encode",
@@ -139,22 +135,10 @@ def build_av1_command(
         "--output",
         str(video_only_path),
         "--video-only",
-        "--min-vmaf",
-        str(config.video_score),
-        "--max-encoded-percent",
-        str(max_encoded_percent),
-        "--max-crf",
+        "--crf",
         "28",
         "--preset",
         "6",
-        "--min-samples",
-        "5",
-        "--sample-every",
-        "2m",
-        "--sample-duration",
-        "6s",
-        "--vmaf",
-        f"model=path={(config.vmaf_model_dir / model).as_posix()}",
         "--enc-input",
         "noautorotate",
     ]
@@ -169,9 +153,6 @@ def compress_with_perceptual_av1(
 ) -> CompressionResult:
     if not is_supported_video(input_path):
         raise RuntimeError(f"Unsupported video extension: {input_path.suffix}")
-    if not 0 < config.video_score <= 100:
-        raise RuntimeError("Video VMAF target must be between 1 and 100")
-
     output_path = get_av1_output_path(input_path, output_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path == input_path:
@@ -201,8 +182,7 @@ def compress_with_perceptual_av1(
             progress_callback(
                 "Analyzing",
                 0,
-                f"Finding an SVT-AV1 encode at VMAF {config.video_score} with at least "
-                f"{config.min_savings_percent}% savings.",
+                "Encoding AV1 with fixed CRF 28 and preserving original audio, chapters, and metadata.",
             )
         run_streaming_command(
             build_av1_command(input_path, video_only_path, video_info, config),
