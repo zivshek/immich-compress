@@ -344,11 +344,13 @@ def copy_metadata(original_path: Path, compressed_path: Path, config: Settings =
             mode="w",
             encoding="utf-8",
             newline="\n",
-            prefix="hbed-exiftool-",
+            prefix="immich-compress-exiftool-",
             suffix=".args",
             delete=False,
         ) as file:
             args_file = file.name
+            file.write("-api\n")
+            file.write("ExtractEmbedded=1\n")
             file.write("-TagsFromFile\n")
             file.write(f"{original_path}\n")
             file.write("-all\n")
@@ -385,7 +387,14 @@ def validate_metadata(
 
 def read_metadata_tag(path: Path, tag: str, config: Settings) -> str:
     result = subprocess.run(
-        [config.exiftool, "-s3", f"-{tag}", str(path)],
+        [
+            config.exiftool,
+            "-api",
+            "ExtractEmbedded=1",
+            "-s3",
+            f"-{tag}",
+            str(path),
+        ],
         capture_output=True,
         text=True,
         errors="replace",
