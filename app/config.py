@@ -38,7 +38,6 @@ class Settings:
     exiftool: str = os.environ.get("EXIFTOOL", "exiftool")
     av1_ffmpeg: str = os.environ.get("AV1_FFMPEG", "/opt/av1/bin/ffmpeg")
     video_crf: int = env_int("VIDEO_CRF", 28)
-    ios_repair_encoder: str = os.environ.get("IOS_REPAIR_ENCODER", "av1_nvenc")
     video_taken_before: str = os.environ.get("VIDEO_TAKEN_BEFORE", "")
     poll_interval_seconds: int = env_int("POLL_INTERVAL_SECONDS", 300)
     auto_process_new_uploads: bool = env_bool("AUTO_PROCESS_NEW_UPLOADS", False)

@@ -5,9 +5,5 @@ services:
     restart: unless-stopped
     ports:
       - "8097:8097"
-    gpus: all
-    environment:
-      NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
-      IOS_REPAIR_ENCODER: "av1_nvenc"
     volumes:
       - /mnt/Apps/AppData/immich-compress:/data

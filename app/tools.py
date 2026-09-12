@@ -66,5 +66,5 @@ def tool_statuses(config: Settings) -> list[ToolStatus]:
         check_command("ExifTool", config.exiftool, "-ver"),
         check_command("FFmpeg", config.ffmpeg, "-version"),
         check_command("FFprobe", config.ffprobe, "-version"),
-        check_ffmpeg_encoder("iOS Repair Encoder", config.ffmpeg, config.ios_repair_encoder),
+        check_ffmpeg_encoder("iOS Repair Encoder", config.ffmpeg, "libsvtav1"),
     ]

@@ -122,7 +122,7 @@ class IosRepairTest(unittest.TestCase):
         self.assertFalse(analysis.needs_repair)
         self.assertEqual(analysis.reasons, ())
 
-    def test_builds_av1_nvenc_command_with_compression_crf(self) -> None:
+    def test_builds_svt_av1_command_matching_optimizer_preset(self) -> None:
         probe = MediaProbe(
             format_name="mov,mp4,m4a,3gp,3g2,mj2",
             video_codec="vp9",
@@ -141,71 +141,19 @@ class IosRepairTest(unittest.TestCase):
             Path("input.mov"),
             Path("output.mp4"),
             probe,
-            Settings(ffmpeg="ffmpeg", ios_repair_encoder="av1_nvenc", video_crf=28),
+            Settings(ffmpeg="ffmpeg", video_crf=28),
         )
 
-        self.assertEqual(command[command.index("-c:v") + 1], "av1_nvenc")
-        self.assertEqual(command[command.index("-cq") + 1], "28")
-        self.assertEqual(command[command.index("-c:a") + 1], "copy")
+        self.assertEqual(command[command.index("-c:v") + 1], "libsvtav1")
+        self.assertEqual(command[command.index("-preset") + 1], "6")
+        self.assertEqual(command[command.index("-crf") + 1], "28")
         self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
         self.assertEqual(command[command.index("-tag:v") + 1], "av01")
         self.assertEqual(command[command.index("-color_trc") + 1], "bt709")
         self.assertIn("tonemap", command[command.index("-vf") + 1])
+        self.assertNotIn("-rc", command)
+        self.assertNotIn("-cq", command)
         self.assertNotIn("-profile:v", command)
-
-    def test_builds_hevc_nvenc_command_with_hvc1_tag(self) -> None:
-        probe = MediaProbe(
-            format_name="mov,mp4,m4a,3gp,3g2,mj2",
-            video_codec="vp9",
-            video_profile="Profile 2",
-            pixel_format="yuv420p10le",
-            width=1080,
-            height=1920,
-            rotation=0,
-            color_primaries="bt2020",
-            color_transfer="arib-std-b67",
-            color_space="bt2020nc",
-            audio_codecs=("aac",),
-            handler_name="Google",
-        )
-        command = build_ios_repair_command(
-            Path("input.mov"),
-            Path("output.mp4"),
-            probe,
-            Settings(ffmpeg="ffmpeg", ios_repair_encoder="hevc_nvenc"),
-        )
-
-        self.assertEqual(command[command.index("-c:v") + 1], "hevc_nvenc")
-        self.assertEqual(command[command.index("-profile:v") + 1], "main")
-        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
-        self.assertEqual(command[command.index("-tag:v") + 1], "hvc1")
-
-    def test_builds_h264_nvenc_command_without_stream_tag(self) -> None:
-        probe = MediaProbe(
-            format_name="mov,mp4,m4a,3gp,3g2,mj2",
-            video_codec="vp9",
-            video_profile="Profile 2",
-            pixel_format="yuv420p10le",
-            width=1080,
-            height=1920,
-            rotation=0,
-            color_primaries="bt2020",
-            color_transfer="arib-std-b67",
-            color_space="bt2020nc",
-            audio_codecs=("aac",),
-            handler_name="Google",
-        )
-        command = build_ios_repair_command(
-            Path("input.mov"),
-            Path("output.mp4"),
-            probe,
-            Settings(ffmpeg="ffmpeg", ios_repair_encoder="h264_nvenc"),
-        )
-
-        self.assertEqual(command[command.index("-c:v") + 1], "h264_nvenc")
-        self.assertEqual(command[command.index("-profile:v") + 1], "high")
-        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
-        self.assertNotIn("-tag:v", command)
 
     def test_hdr_filter_tone_maps_to_bt709(self) -> None:
         probe = MediaProbe(

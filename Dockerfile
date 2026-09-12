@@ -32,9 +32,6 @@ RUN git clone --depth 1 --branch "${SVT_AV1_VERSION}" https://gitlab.com/AOMedia
     && cmake --build svt-av1/build --parallel \
     && cmake --install svt-av1/build
 
-RUN git clone --depth 1 --branch n12.2.72.0 https://github.com/FFmpeg/nv-codec-headers.git nv-codec-headers \
-    && make -C nv-codec-headers install PREFIX=/opt/av1
-
 RUN curl -fsSL -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
     && tar xf ffmpeg.tar.xz \
     && cd "ffmpeg-${FFMPEG_VERSION}" \
@@ -45,12 +42,10 @@ RUN curl -fsSL -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VER
       --extra-cflags=-I/opt/av1/include \
       --extra-ldflags=-L/opt/av1/lib \
       --enable-gpl \
-      --enable-ffnvcodec \
       --enable-libdav1d \
       --enable-libopus \
       --enable-libsvtav1 \
       --enable-libzimg \
-      --enable-nvenc \
       --disable-debug \
       --disable-doc \
     && make -j"$(nproc)" \

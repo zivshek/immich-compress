@@ -133,17 +133,6 @@ def build_ios_repair_command(
     probe: MediaProbe,
     config: Settings,
 ) -> list[str]:
-    encoder = (config.ios_repair_encoder or "").lower()
-    if "av1" in encoder:
-        codec_args = ["-pix_fmt", "yuv420p"]
-        tag_args = ["-tag:v", "av01"]
-    elif "hevc" in encoder:
-        codec_args = ["-profile:v", "main", "-pix_fmt", "yuv420p"]
-        tag_args = ["-tag:v", "hvc1"]
-    else:
-        codec_args = ["-profile:v", "high", "-pix_fmt", "yuv420p"]
-        tag_args = []
-
     return [
         config.ffmpeg,
         "-hide_banner",
@@ -162,16 +151,13 @@ def build_ios_repair_command(
         "-vf",
         build_tonemap_filter(probe),
         "-c:v",
-        config.ios_repair_encoder,
+        "libsvtav1",
         "-preset",
-        "p5",
-        "-rc",
-        "vbr",
-        "-cq",
+        "6",
+        "-crf",
         str(config.video_crf),
-        "-b:v",
-        "0",
-        *codec_args,
+        "-pix_fmt",
+        "yuv420p",
         "-color_primaries",
         "bt709",
         "-color_trc",
@@ -182,7 +168,8 @@ def build_ios_repair_command(
         "tv",
         "-c:a",
         "copy",
-        *tag_args,
+        "-tag:v",
+        "av01",
         "-movflags",
         "+faststart+use_metadata_tags",
         str(output_path),
@@ -232,7 +219,7 @@ def repair_video_for_ios(
         progress_callback(
             "Repairing",
             0,
-            f"Transcoding to AV1 MP4 with {config.ios_repair_encoder} at CRF {config.video_crf}, "
+            f"Transcoding to AV1 MP4 with libsvtav1 at CRF {config.video_crf}, "
             "tone-mapped to SDR BT.709.",
         )
     try:
