@@ -151,9 +151,9 @@ environment:
 `IOS_REPAIR_ENCODER` defaults to `av1_nvenc`. Repair quality follows the AV1 CRF setting from the
 Settings page (`VIDEO_CRF`, default 28); lower CRF values are larger and higher quality.
 
-The repair command adapts to the configured encoder: `av1_nvenc` writes 10-bit `main` profile with
-the `av01` tag, `hevc_nvenc` writes 10-bit `main10` with `hvc1`, and `h264_nvenc` writes 8-bit
-`high` profile. If an older image's `ffmpeg` lacks `av1_nvenc`, set
+The repair command adapts to the configured encoder: `av1_nvenc` writes 10-bit `p010le` AV1 with
+the `av01` tag, `hevc_nvenc` writes 10-bit `main10` (`p010le`) with `hvc1`, and `h264_nvenc` writes
+8-bit `high` profile. If an older image's `ffmpeg` lacks `av1_nvenc`, set
 `IOS_REPAIR_ENCODER: hevc_nvenc` as a compatible interim fallback.
 
 ## Accepting reviewed files

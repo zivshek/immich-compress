@@ -131,9 +131,9 @@ class IosRepairTest(unittest.TestCase):
         self.assertEqual(command[command.index("-c:v") + 1], "av1_nvenc")
         self.assertEqual(command[command.index("-cq") + 1], "28")
         self.assertEqual(command[command.index("-c:a") + 1], "copy")
-        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p10le")
-        self.assertEqual(command[command.index("-profile:v") + 1], "main")
+        self.assertEqual(command[command.index("-pix_fmt") + 1], "p010le")
         self.assertEqual(command[command.index("-tag:v") + 1], "av01")
+        self.assertNotIn("-profile:v", command)
         self.assertNotIn("-vf", command)
         self.assertNotIn("tonemap", command)
 
@@ -146,7 +146,7 @@ class IosRepairTest(unittest.TestCase):
 
         self.assertEqual(command[command.index("-c:v") + 1], "hevc_nvenc")
         self.assertEqual(command[command.index("-profile:v") + 1], "main10")
-        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p10le")
+        self.assertEqual(command[command.index("-pix_fmt") + 1], "p010le")
         self.assertEqual(command[command.index("-tag:v") + 1], "hvc1")
 
     def test_builds_h264_nvenc_command_without_stream_tag(self) -> None:
