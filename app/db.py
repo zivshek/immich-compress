@@ -38,6 +38,7 @@ def init_db() -> None:
               original_size INTEGER,
               compressed_size INTEGER,
               saved_bytes INTEGER,
+              job_kind TEXT NOT NULL DEFAULT 'compress',
               progress_stage TEXT,
               progress_percent REAL,
               error TEXT,
@@ -52,6 +53,7 @@ def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_asset_id ON compression_jobs(asset_id)"
         )
         ensure_column(db, "compression_jobs", "target_asset_id", "TEXT")
+        ensure_column(db, "compression_jobs", "job_kind", "TEXT NOT NULL DEFAULT 'compress'")
         ensure_column(db, "compression_jobs", "progress_stage", "TEXT")
         ensure_column(db, "compression_jobs", "progress_percent", "REAL")
         ensure_column(db, "compression_jobs", "queued_at", "TEXT")
@@ -249,22 +251,26 @@ def upsert_job(
     asset_id: str,
     original_file_name: str,
     state: str = "pending",
+    job_kind: str = "compress",
 ) -> None:
     now = utc_now()
     with connect() as db:
         db.execute(
             """
-            INSERT INTO compression_jobs(asset_id, original_file_name, state, created_at, queued_at)
-            VALUES(?, ?, ?, ?, ?)
+            INSERT INTO compression_jobs(
+              asset_id, original_file_name, state, job_kind, created_at, queued_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET
               original_file_name = excluded.original_file_name,
+              job_kind = excluded.job_kind,
               state = excluded.state,
               queued_at = CASE
                 WHEN excluded.state = 'pending' THEN excluded.queued_at
                 ELSE compression_jobs.queued_at
               END
             """,
-            (asset_id, original_file_name, state, now, now),
+            (asset_id, original_file_name, state, job_kind, now, now),
         )
 
 

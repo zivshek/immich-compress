@@ -16,6 +16,7 @@ from app import db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
 from app.jobs import (
+    IOS_REPAIR_JOB_KIND,
     job_queue,
     mark_processed,
     reject_job as reject_work_job,
@@ -435,6 +436,24 @@ def process_selected(
     return RedirectResponse(redirect_url, status_code=303)
 
 
+@app.post("/videos/repair-ios-selected")
+def repair_ios_selected(
+    asset_ids: list[str] = Form(default=[]),
+    page: int = Form(default=1),
+    search: str = Form(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    redirect_url = videos_url(page, search.strip())
+    if not asset_ids:
+        return RedirectResponse(redirect_url, status_code=303)
+    client = ImmichClient()
+    for asset_id in asset_ids:
+        asset = client.find_asset_by_id(asset_id)
+        job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+    return RedirectResponse(redirect_url, status_code=303)
+
+
 @app.post("/videos/mark-processed")
 def mark_selected_processed(
     asset_ids: list[str] = Form(default=[]),
@@ -469,6 +488,24 @@ def process_all_videos():
 
     for asset in all_assets:
         job_queue.enqueue_asset(asset)
+    return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/videos/repair-ios-all")
+def repair_all_ios_problem_videos():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    client = ImmichClient()
+    page = 1
+    while True:
+        videos, _ = client.search_videos(page=page, size=100)
+        if not videos:
+            break
+        for asset in videos:
+            job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+        if len(videos) < 100:
+            break
+        page += 1
     return RedirectResponse("/jobs", status_code=303)
 
 
@@ -525,7 +562,7 @@ def job_detail(request: Request, asset_id: str):
             "settings": effective_settings(),
             "job": job,
             "asset_info": asset_info,
-            "can_cancel": job["state"] in {"pending", "compressing"},
+            "can_cancel": job["state"] in {"pending", "compressing", "repairing"},
             "can_retry": job["state"] in {"failed", "rejected", "canceled"},
         },
     )

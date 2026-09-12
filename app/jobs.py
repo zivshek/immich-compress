@@ -10,6 +10,11 @@ from app import db
 from app.compression import compress_video
 from app.config import effective_settings
 from app.immich import ImmichClient
+from app.ios_repair import (
+    analyze_ios_compatibility,
+    probe_media,
+    repair_video_for_ios,
+)
 
 
 ASSET_ID_RE = re.compile(
@@ -17,6 +22,9 @@ ASSET_ID_RE = re.compile(
 )
 LEGACY_PROCESSED_SUFFIX = "-hbed"
 RETRYABLE_STATES = {"failed", "rejected", "canceled"}
+COMPRESS_JOB_KIND = "compress"
+IOS_REPAIR_JOB_KIND = "ios_repair"
+ACTIVE_STATES = {"pending", "compressing", "repairing", "copying"}
 
 
 class JobQueue:
@@ -32,7 +40,7 @@ class JobQueue:
     def start(self) -> None:
         if self.started:
             return
-        for job in db.list_jobs_by_states({"pending", "compressing", "copying"}):
+        for job in db.list_jobs_by_states(ACTIVE_STATES):
             mark_canceled(job["asset_id"], "Canceled after the app restarted.")
         self.started = True
         for index in range(max(1, effective_settings().max_concurrent_jobs)):
@@ -46,18 +54,40 @@ class JobQueue:
         self.enqueue_asset(asset)
         return asset_id
 
-    def enqueue_asset(self, asset: dict) -> bool:
+    def enqueue_asset(
+        self,
+        asset: dict,
+        job_kind: str = COMPRESS_JOB_KIND,
+        *,
+        force: bool = False,
+    ) -> bool:
         asset_id = asset["id"]
         with self.lock:
             if asset_id in self.queued_ids or asset_id in self.active:
                 return False
             job = db.get_job_for_asset(asset_id)
-            if job and job["state"] not in RETRYABLE_STATES:
+            if job and job["asset_id"] != asset_id:
+                return False
+            if job and job["state"] not in RETRYABLE_STATES and not force:
                 return False
             if not self.queued_ids and not self.active:
                 self.run_total = 0
                 self.run_completed = 0
-            db.upsert_job(asset_id, asset.get("originalFileName") or asset_id)
+            db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, job_kind=job_kind)
+            db.update_job(
+                asset_id,
+                target_asset_id=None,
+                original_path=None,
+                output_path=None,
+                original_size=None,
+                compressed_size=None,
+                saved_bytes=None,
+                progress_stage="Queued",
+                progress_percent=0,
+                process_started_at=None,
+                error=None,
+                logs="",
+            )
             self.queued_ids.add(asset_id)
             self.run_total += 1
             self.queue.put(asset_id)
@@ -83,7 +113,8 @@ class JobQueue:
             error=None,
             logs=((job["logs"] or "") + "\nRetry requested.").strip(),
         )
-        return self.enqueue_asset(asset)
+        job_kind = job["job_kind"] if "job_kind" in job.keys() else COMPRESS_JOB_KIND
+        return self.enqueue_asset(asset, job_kind=job_kind, force=True)
 
     def snapshot(self) -> dict[str, object] | None:
         with self.lock:
@@ -174,10 +205,12 @@ def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
     asset = client.find_asset_by_id(asset_id)
     raise_if_canceled(cancel_event)
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
+    job = db.get_job(asset_id)
+    job_kind = job["job_kind"] if job and "job_kind" in job.keys() else COMPRESS_JOB_KIND
     db.update_job(asset_id, process_started_at=db.utc_now())
-    if is_legacy_processed_filename(original_name):
+    if job_kind == COMPRESS_JOB_KIND and is_legacy_processed_filename(original_name):
         current_size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
-        db.upsert_job(asset_id, original_name, "processed")
+        db.upsert_job(asset_id, original_name, "processed", job_kind=job_kind)
         db.update_job(
             asset_id,
             compressed_size=current_size,
@@ -191,7 +224,11 @@ def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
         )
         return
 
-    db.upsert_job(asset_id, original_name, "compressing")
+    if job_kind == IOS_REPAIR_JOB_KIND:
+        process_ios_repair_asset(asset, cancel_event)
+        return
+
+    db.upsert_job(asset_id, original_name, "compressing", job_kind=job_kind)
 
     work_dir = config.data_dir / "work" / asset_id
     input_path = work_dir / original_name
@@ -249,6 +286,90 @@ def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
         db.update_job(asset_id, state="failed", error=str(exc))
 
 
+def process_ios_repair_asset(asset: dict, cancel_event: threading.Event) -> None:
+    config = effective_settings()
+    client = ImmichClient(config)
+    asset_id = asset["id"]
+    original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
+    db.upsert_job(asset_id, original_name, "repairing", job_kind=IOS_REPAIR_JOB_KIND)
+
+    work_dir = config.data_dir / "work" / asset_id
+    input_path = work_dir / original_name
+    output_dir = work_dir / "ios-compatible"
+    try:
+        client.download_original(asset_id, input_path, cancel_event.is_set)
+        raise_if_canceled(cancel_event)
+        original_size = input_path.stat().st_size
+        db.update_job(
+            asset_id,
+            original_path=str(input_path),
+            original_size=original_size,
+            progress_stage="Downloaded",
+            progress_percent=0,
+            logs=f"Downloaded original for iOS repair: {original_size / 1048576:.1f} MB",
+        )
+
+        probe = probe_media(input_path, config)
+        analysis = analyze_ios_compatibility(probe)
+        if not analysis.needs_repair:
+            db.update_job(
+                asset_id,
+                state="processed",
+                compressed_size=original_size,
+                saved_bytes=0,
+                progress_stage="Already compatible",
+                progress_percent=100,
+                error=None,
+                logs=(
+                    "Skipped iOS repair because the video already appears compatible: "
+                    f"{probe.video_codec or 'unknown'} video in {probe.format_name or 'unknown'}."
+                ),
+            )
+            cleanup_work_dir(asset_id)
+            db.update_job(asset_id, original_path=None, output_path=None)
+            return
+
+        db.append_job_log(asset_id, "iOS repair reasons: " + "; ".join(analysis.reasons))
+
+        def progress(stage: str, percent: float | None, line: str | None) -> None:
+            values: dict[str, object] = {"progress_stage": stage}
+            if percent is not None:
+                values["progress_percent"] = max(0, min(100, percent))
+            db.update_job(asset_id, **values)
+            if line:
+                db.append_job_log(asset_id, line)
+
+        result = repair_video_for_ios(
+            input_path,
+            output_dir,
+            config,
+            progress,
+            cancel_event.is_set,
+        )
+        raise_if_canceled(cancel_event)
+        db.update_job(
+            asset_id,
+            state="review",
+            original_path=str(input_path),
+            output_path=str(result.output_path),
+            original_size=result.original_size,
+            compressed_size=result.processed_size,
+            saved_bytes=max(0, result.size_delta_bytes),
+            progress_stage="Review",
+            progress_percent=100,
+            error=None,
+        )
+        raise_if_canceled(cancel_event)
+        try:
+            upload_copy(asset_id, trash_original=True)
+        except Exception as exc:
+            db.update_job(asset_id, state="copy-failed", error=str(exc))
+    except InterruptedError:
+        mark_canceled(asset_id)
+    except Exception as exc:
+        db.update_job(asset_id, state="failed", error=str(exc))
+
+
 def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
     config = effective_settings()
     job = db.get_job(asset_id)
@@ -259,7 +380,7 @@ def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
     else:
         output_path = Path(job["output_path"])
         if not output_path.is_file():
-            raise RuntimeError("Compressed output file is not available")
+            raise RuntimeError("Processed output file is not available")
         client = ImmichClient(config)
         source_asset = client.find_asset_by_id(asset_id)
         uploaded = client.upload_asset_copy(source_asset, output_path)
@@ -275,7 +396,7 @@ def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
             state="copied",
             error=None,
             logs=(refreshed_job["logs"] if refreshed_job else job["logs"] or "")
-            + f"\nUploaded compressed asset {target_asset_id} and copied Immich metadata.",
+            + f"\nUploaded processed asset {target_asset_id} and copied Immich metadata.",
         )
         trash_original_asset(asset_id)
         return target_asset_id
@@ -285,7 +406,7 @@ def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
         target_asset_id=target_asset_id,
         state="copied",
         error=None,
-        logs=(job["logs"] or "") + f"\nUploaded compressed asset {target_asset_id} and copied Immich metadata.",
+        logs=(job["logs"] or "") + f"\nUploaded processed asset {target_asset_id} and copied Immich metadata.",
     )
     cleanup_work_dir(asset_id)
     db.update_job(asset_id, original_path=None, output_path=None)
@@ -298,7 +419,7 @@ def trash_original_asset(asset_id: str) -> None:
     if not job:
         raise RuntimeError("Job not found")
     if not job["target_asset_id"]:
-        raise RuntimeError("Upload the compressed copy before trashing the original")
+        raise RuntimeError("Upload the processed copy before trashing the original")
 
     client = ImmichClient(config)
     client.trash_asset(asset_id)
@@ -307,7 +428,7 @@ def trash_original_asset(asset_id: str) -> None:
         state="copied-and-trashed",
         error=None,
         logs=(job["logs"] or "")
-        + f"\nTrashed original asset after uploading compressed asset {job['target_asset_id']}.",
+        + f"\nTrashed original asset after uploading processed asset {job['target_asset_id']}.",
     )
     cleanup_work_dir(asset_id)
     db.update_job(asset_id, original_path=None, output_path=None)

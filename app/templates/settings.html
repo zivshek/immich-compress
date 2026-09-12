@@ -44,7 +44,7 @@
         Mode
         <select name="replacement_mode" data-described-select="mode-description">
           <option value="review" data-description="Compress and wait for you to accept or reject the result." {% if settings.replacement_mode == "review" %}selected{% endif %}>Review - approve each result</option>
-          <option value="auto" data-description="Upload the compressed copy and trash the original automatically." {% if settings.replacement_mode == "auto" %}selected{% endif %}>Auto - replace without review</option>
+          <option value="auto" data-description="Upload processed compression copies and trash originals automatically." {% if settings.replacement_mode == "auto" %}selected{% endif %}>Auto - replace without review</option>
         </select>
         <small id="mode-description"></small>
       </label>

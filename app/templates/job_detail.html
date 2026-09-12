@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% if job.state in ["pending", "compressing", "copying"] %}
+{% if job.state in ["pending", "compressing", "repairing", "copying"] %}
 <script>
   window.setTimeout(() => window.location.reload(), 3000);
 </script>
@@ -56,14 +56,14 @@
   </div>
 
   <div class="panel detail-card">
-    <h1>Compression</h1>
+    <h1>{{ "iOS Repair" if job.job_kind == "ios_repair" else "Compression" }}</h1>
     <div class="metric-grid">
       <div>
         <span class="label">Original</span>
         <strong>{{ "%.1f"|format(job.original_size / 1048576) ~ " MB" if job.original_size is not none else "-" }}</strong>
       </div>
       <div>
-        <span class="label">Compressed</span>
+        <span class="label">{{ "Processed" if job.job_kind == "ios_repair" else "Compressed" }}</span>
         <strong>{{ "%.1f"|format(job.compressed_size / 1048576) ~ " MB" if job.compressed_size is not none else asset_info.original_file_size or "-" }}</strong>
       </div>
       <div>
@@ -121,7 +121,7 @@
   {% endif %}
   <aside class="panel review-actions">
     {% if job.output_path %}
-    <a class="button" href="/jobs/{{ job.asset_id }}/files/compressed">Download Compressed</a>
+    <a class="button" href="/jobs/{{ job.asset_id }}/files/compressed">Download Processed</a>
     {% endif %}
     {% if job.original_path %}
     <a class="button secondary" href="/jobs/{{ job.asset_id }}/files/original">Download Original</a>
