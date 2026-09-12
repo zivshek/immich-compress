@@ -10,13 +10,16 @@ from typing import Iterator
 from app.config import settings
 
 
+SQLITE_BUSY_TIMEOUT_MS = 30000
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def init_db() -> None:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
-    with connect() as db:
+    with connect(enable_wal=True) as db:
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS app_settings (
@@ -122,9 +125,12 @@ def repair_processed_metrics(db: sqlite3.Connection) -> None:
 
 
 @contextmanager
-def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
-    db = sqlite3.connect(path or settings.database_path)
+def connect(path: Path | None = None, *, enable_wal: bool = False) -> Iterator[sqlite3.Connection]:
+    db = sqlite3.connect(path or settings.database_path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
     db.row_factory = sqlite3.Row
+    db.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    if enable_wal:
+        db.execute("PRAGMA journal_mode = WAL")
     try:
         yield db
         db.commit()

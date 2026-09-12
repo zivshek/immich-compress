@@ -75,11 +75,14 @@ class DatabaseMigrationTest(unittest.TestCase):
                         WHERE type = 'table' AND name = 'processing_batches'
                         """
                     ).fetchone()
+                with db.connect() as app_connection:
+                    busy_timeout = app_connection.execute("PRAGMA busy_timeout").fetchone()[0]
 
                 self.assertNotIn("batch_id", columns)
                 self.assertNotIn("updated_at", columns)
                 self.assertIn("queued_at", columns)
                 self.assertIn("job_kind", columns)
+                self.assertEqual(busy_timeout, 30000)
                 self.assertIsNone(batch_table)
                 self.assertEqual(db.get_job_for_asset("copied-id")["asset_id"], "original-id")
                 self.assertEqual(stable_queued_at, "2020-01-01T00:00:00+00:00")

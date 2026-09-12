@@ -11,13 +11,16 @@ from app.db import utc_now
 from app.ios_repair import IosCompatibilityAnalysis, MediaProbe
 
 
+SQLITE_BUSY_TIMEOUT_MS = 30000
+
+
 def database_path() -> Path:
     return settings.data_dir / "immich-ios-problems.sqlite"
 
 
 def init_db() -> None:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
-    with connect() as db:
+    with connect(enable_wal=True) as db:
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS ios_problem_videos (
@@ -55,9 +58,12 @@ def init_db() -> None:
 
 
 @contextmanager
-def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
-    db = sqlite3.connect(path or database_path())
+def connect(path: Path | None = None, *, enable_wal: bool = False) -> Iterator[sqlite3.Connection]:
+    db = sqlite3.connect(path or database_path(), timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
     db.row_factory = sqlite3.Row
+    db.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    if enable_wal:
+        db.execute("PRAGMA journal_mode = WAL")
     try:
         yield db
         db.commit()

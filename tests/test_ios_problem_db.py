@@ -17,6 +17,8 @@ class IosProblemDatabaseTest(unittest.TestCase):
             ios_problem_db.settings = replace(settings, data_dir=Path(directory))
             try:
                 ios_problem_db.init_db()
+                with ios_problem_db.connect() as connection:
+                    busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
                 probe = MediaProbe(
                     format_name="mov,mp4,m4a,3gp,3g2,mj2",
                     video_codec="vp9",
@@ -51,6 +53,7 @@ class IosProblemDatabaseTest(unittest.TestCase):
                 rows = ios_problem_db.list_problems()
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0]["asset_id"], "asset-1")
+                self.assertEqual(busy_timeout, 30000)
                 self.assertEqual(rows[0]["video_codec"], "vp9")
                 self.assertEqual(rows[0]["status"], "problem")
                 self.assertEqual(
