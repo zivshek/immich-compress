@@ -162,11 +162,17 @@ def build_ios_repair_command(
         "-vf",
         build_tonemap_filter(probe),
         "-c:v",
-        "libx264",
+        config.ios_repair_encoder,
         "-preset",
-        "medium",
-        "-crf",
-        "18",
+        "p5",
+        "-tune",
+        "hq",
+        "-rc",
+        "vbr",
+        "-cq",
+        str(config.ios_repair_cq),
+        "-b:v",
+        "0",
         "-profile:v",
         "high",
         "-level",
@@ -231,7 +237,11 @@ def repair_video_for_ios(
     env["PATH"] = os.pathsep.join([str(Path(config.ffmpeg).parent), env.get("PATH", "")])
 
     if progress_callback:
-        progress_callback("Repairing", 0, "Transcoding to H.264/AAC MP4 with SDR BT.709 output.")
+        progress_callback(
+            "Repairing",
+            0,
+            f"Transcoding to H.264/AAC MP4 with {config.ios_repair_encoder} and SDR BT.709 output.",
+        )
     try:
         run_streaming_command(
             build_ios_repair_command(input_path, output_path, probe, config),

@@ -38,10 +38,33 @@ def check_command(name: str, command: str, *version_args: str) -> ToolStatus:
     )
 
 
+def check_ffmpeg_encoder(name: str, command: str, encoder: str) -> ToolStatus:
+    resolved = shutil.which(command) or command
+    try:
+        result = subprocess.run(
+            [resolved, "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ToolStatus(name=name, command=encoder, available=False, version=str(exc))
+
+    available = result.returncode == 0 and encoder in result.stdout
+    return ToolStatus(
+        name=name,
+        command=encoder,
+        available=available,
+        version="available" if available else f"{encoder} not listed by ffmpeg",
+    )
+
+
 def tool_statuses(config: Settings) -> list[ToolStatus]:
     return [
         check_command("AV1 FFmpeg", config.av1_ffmpeg, "-version"),
         check_command("ExifTool", config.exiftool, "-ver"),
         check_command("FFmpeg", config.ffmpeg, "-version"),
         check_command("FFprobe", config.ffprobe, "-version"),
+        check_ffmpeg_encoder("iOS Repair Encoder", config.ffmpeg, config.ios_repair_encoder),
     ]

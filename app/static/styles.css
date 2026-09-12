@@ -170,11 +170,20 @@ h1 {
   margin-bottom: 5px;
 }
 
+.subtle {
+  color: var(--muted);
+  margin: 0;
+}
+
 .toolbar {
   align-items: center;
   display: flex;
   gap: 12px;
   margin: 18px 0 24px;
+}
+
+.compact-toolbar {
+  margin: 0;
 }
 
 .video-actions {
@@ -409,6 +418,19 @@ th {
 .state-copy-failed {
   background: #f5dddd;
   color: var(--danger);
+}
+
+.state-scan-error,
+.state-failed {
+  background: #f5dddd;
+  color: var(--danger);
+}
+
+.state-problem,
+.state-queued,
+.state-repairing {
+  background: #fbebd7;
+  color: #88470e;
 }
 
 .empty {

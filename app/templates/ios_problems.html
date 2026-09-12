@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+{% if scanner.running %}
+<script>
+  window.setTimeout(() => window.location.reload(), 3000);
+</script>
+{% endif %}
+
+<section class="detail-header">
+  <div>
+    <h1>iOS Problem Videos</h1>
+    <p class="subtle">Cached videos that need compatibility repair before reliable iOS playback.</p>
+  </div>
+  <span class="state">{{ total }} cached</span>
+</section>
+
+<section class="progress-panel panel">
+  <div class="progress-header">
+    <div>
+      <span class="label">Library Scan</span>
+      <strong>
+        {% if scanner.running %}
+        Scanning {{ scanner.scanned }}{% if scanner.total %} of {{ scanner.total }}{% endif %}
+        {% else %}
+        Idle
+        {% endif %}
+      </strong>
+      {% if scanner.current_file %}<small>{{ scanner.current_file }}</small>{% endif %}
+      {% if scanner.last_error %}<small class="error">{{ scanner.last_error }}</small>{% endif %}
+    </div>
+    <div class="toolbar compact-toolbar">
+      {% if scanner.running %}
+      <form method="post" action="/ios-problems/cancel-scan">
+        <button class="danger-button" type="submit">Cancel Scan</button>
+      </form>
+      {% else %}
+      <form method="post" action="/ios-problems/scan">
+        <button type="submit">Scan Library</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" style="width: {{ scanner.percent or 0 }}%"></div>
+  </div>
+  <small>{{ scanner.found }} problem videos found in this scan.</small>
+</section>
+
+<section>
+  <div class="toolbar jobs-toolbar">
+    <form method="get" action="/ios-problems" class="inline-form">
+      <select name="status" aria-label="Filter cached problem videos by status">
+        <option value="">All statuses</option>
+        {% for status in statuses %}
+        <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Filter</button>
+    </form>
+  </div>
+
+  <form method="post" action="/ios-problems/repair-selected">
+    <input type="hidden" name="page" value="{{ page }}">
+    <input type="hidden" name="status" value="{{ status_filter }}">
+    <div class="toolbar video-actions">
+      <button type="submit">Repair Selected</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><input class="check-cell" type="checkbox" onclick="document.querySelectorAll('input[name=asset_ids]').forEach(cb => cb.checked = this.checked)"></th>
+            <th>File</th>
+            <th>Status</th>
+            <th>Size</th>
+            <th>Resolution</th>
+            <th>Video</th>
+            <th>Color</th>
+            <th>Audio</th>
+            <th>Reasons</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><input class="check-cell" name="asset_ids" type="checkbox" value="{{ row.problem.asset_id }}"></td>
+            <td>
+              <a class="filename" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ row.problem.asset_id }}" target="_blank" rel="noreferrer">{{ row.problem.original_file_name }}</a>
+              {% if row.job %}<small><a href="/jobs/{{ row.job.asset_id }}">View job logs</a></small>{% endif %}
+              {% if row.problem.local_date_time %}<small>{{ row.problem.local_date_time }}</small>{% endif %}
+            </td>
+            <td><span class="state state-{{ row.problem.status }}">{{ row.problem.status }}</span></td>
+            <td>{{ row.size or "-" }}</td>
+            <td>{{ row.resolution }}</td>
+            <td>
+              {{ row.problem.video_codec or "-" }}
+              {% if row.problem.video_profile %}<small>{{ row.problem.video_profile }}</small>{% endif %}
+              {% if row.problem.pixel_format %}<small>{{ row.problem.pixel_format }}</small>{% endif %}
+            </td>
+            <td>
+              {{ row.problem.color_transfer or "-" }}
+              {% if row.problem.color_primaries %}<small>{{ row.problem.color_primaries }}</small>{% endif %}
+              {% if row.problem.color_space %}<small>{{ row.problem.color_space }}</small>{% endif %}
+            </td>
+            <td>{{ row.audio }}</td>
+            <td>
+              {% if row.problem.error %}
+              <small class="error">{{ row.problem.error }}</small>
+              {% endif %}
+              {% for reason in row.reasons %}
+              <small>{{ reason }}</small>
+              {% endfor %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="empty">No cached iOS problem videos. Run a scan to populate this page.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+  {% if total_pages > 1 %}
+  <div class="pager video-pager">
+    <span>
+      {% if has_previous %}<a class="button secondary" href="{{ previous_url }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ total_pages }}</span>
+      {% if has_next %}<a class="button secondary" href="{{ next_url }}">Next</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from queue import Empty, Queue
 
-from app import db
+from app import db, ios_problem_db
 from app.compression import compress_video
 from app.config import effective_settings
 from app.immich import ImmichClient
@@ -74,6 +74,8 @@ class JobQueue:
                 self.run_total = 0
                 self.run_completed = 0
             db.upsert_job(asset_id, asset.get("originalFileName") or asset_id, job_kind=job_kind)
+            if job_kind == IOS_REPAIR_JOB_KIND:
+                ios_problem_db.update_status(asset_id, "queued")
             db.update_job(
                 asset_id,
                 target_asset_id=None,
@@ -292,6 +294,7 @@ def process_ios_repair_asset(asset: dict, cancel_event: threading.Event) -> None
     asset_id = asset["id"]
     original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
     db.upsert_job(asset_id, original_name, "repairing", job_kind=IOS_REPAIR_JOB_KIND)
+    ios_problem_db.update_status(asset_id, "repairing")
 
     work_dir = config.data_dir / "work" / asset_id
     input_path = work_dir / original_name
@@ -325,6 +328,7 @@ def process_ios_repair_asset(asset: dict, cancel_event: threading.Event) -> None
                     f"{probe.video_codec or 'unknown'} video in {probe.format_name or 'unknown'}."
                 ),
             )
+            ios_problem_db.mark_not_problem(asset_id)
             cleanup_work_dir(asset_id)
             db.update_job(asset_id, original_path=None, output_path=None)
             return
@@ -359,15 +363,19 @@ def process_ios_repair_asset(asset: dict, cancel_event: threading.Event) -> None
             progress_percent=100,
             error=None,
         )
+        ios_problem_db.update_status(asset_id, "review")
         raise_if_canceled(cancel_event)
-        try:
-            upload_copy(asset_id, trash_original=True)
-        except Exception as exc:
-            db.update_job(asset_id, state="copy-failed", error=str(exc))
+        if config.replacement_mode == "auto":
+            try:
+                upload_copy(asset_id, trash_original=True)
+            except Exception as exc:
+                db.update_job(asset_id, state="copy-failed", error=str(exc))
+                ios_problem_db.update_status(asset_id, "copy-failed", str(exc))
     except InterruptedError:
         mark_canceled(asset_id)
     except Exception as exc:
         db.update_job(asset_id, state="failed", error=str(exc))
+        ios_problem_db.update_status(asset_id, "failed", str(exc))
 
 
 def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
@@ -387,6 +395,8 @@ def upload_copy(asset_id: str, *, trash_original: bool = False) -> str:
         target_asset_id = uploaded["id"]
         db.update_job(asset_id, target_asset_id=target_asset_id, state="copying")
         client.copy_asset_metadata(asset_id, target_asset_id)
+        if job["job_kind"] == IOS_REPAIR_JOB_KIND:
+            ios_problem_db.update_status(asset_id, "copied")
 
     if trash_original:
         refreshed_job = db.get_job(asset_id)
@@ -423,6 +433,8 @@ def trash_original_asset(asset_id: str) -> None:
 
     client = ImmichClient(config)
     client.trash_asset(asset_id)
+    if job["job_kind"] == IOS_REPAIR_JOB_KIND:
+        ios_problem_db.update_status(asset_id, "copied-and-trashed")
     db.update_job(
         asset_id,
         state="copied-and-trashed",
@@ -464,6 +476,8 @@ def reject_job(asset_id: str) -> None:
         error=None,
         logs=(job["logs"] or "") + "\nRejected and deleted local work files.",
     )
+    if job["job_kind"] == IOS_REPAIR_JOB_KIND:
+        ios_problem_db.update_status(asset_id, "rejected")
 
 
 def cleanup_work_dir(asset_id: str) -> None:

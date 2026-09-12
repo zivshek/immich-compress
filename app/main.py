@@ -12,9 +12,11 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import db
+from app import db, ios_problem_db
 from app.config import effective_settings, normalize_mode, settings
 from app.immich import ImmichClient
+from app.ios_problem_scan import ios_problem_scanner
+from app.ios_problem_db import parse_json_list
 from app.jobs import (
     IOS_REPAIR_JOB_KIND,
     job_queue,
@@ -189,6 +191,13 @@ def jobs_url(page: int, state: str = "") -> str:
     return f"/jobs?{urlencode(query)}"
 
 
+def ios_problems_url(page: int, status: str = "") -> str:
+    query = {"page": max(1, page)}
+    if status:
+        query["status"] = status
+    return f"/ios-problems?{urlencode(query)}"
+
+
 def settings_page_context(message: str | None = None) -> dict[str, object]:
     current = effective_settings()
     return {
@@ -205,6 +214,7 @@ def processing_is_configured() -> bool:
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
+    ios_problem_db.init_db()
     job_queue.start()
 
 
@@ -410,6 +420,91 @@ def videos_page(
     return response
 
 
+@app.get("/ios-problems")
+def ios_problems_page(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    status: str = Query(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    statuses = ios_problem_db.list_problem_statuses()
+    status = status.strip()
+    if status and status not in statuses:
+        status = ""
+    page_size = 25
+    total = ios_problem_db.count_problems(status)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, total_pages)
+    problems = ios_problem_db.list_problems(page_size, (page - 1) * page_size, status)
+    jobs_by_asset = db.list_jobs_for_assets([problem["asset_id"] for problem in problems])
+    rows = [
+        {
+            "problem": problem,
+            "job": jobs_by_asset.get(problem["asset_id"]),
+            "size": format_bytes(problem["original_file_size"]),
+            "resolution": (
+                f"{problem['width']} x {problem['height']}"
+                if problem["width"] and problem["height"]
+                else "-"
+            ),
+            "audio": ", ".join(parse_json_list(problem["audio_codecs"])) or "-",
+            "reasons": parse_json_list(problem["reasons"]),
+        }
+        for problem in problems
+    ]
+    return templates.TemplateResponse(
+        request,
+        "ios_problems.html",
+        {
+            "settings": effective_settings(),
+            "rows": rows,
+            "scanner": ios_problem_scanner.snapshot(),
+            "page": page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_previous": page > 1,
+            "has_next": page < total_pages,
+            "status_filter": status,
+            "statuses": statuses,
+            "previous_url": ios_problems_url(page - 1, status),
+            "next_url": ios_problems_url(page + 1, status),
+        },
+    )
+
+
+@app.post("/ios-problems/scan")
+def scan_ios_problems():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    ios_problem_scanner.start()
+    return RedirectResponse("/ios-problems", status_code=303)
+
+
+@app.post("/ios-problems/cancel-scan")
+def cancel_ios_problem_scan():
+    ios_problem_scanner.cancel()
+    return RedirectResponse("/ios-problems", status_code=303)
+
+
+@app.post("/ios-problems/repair-selected")
+def repair_selected_ios_problems(
+    asset_ids: list[str] = Form(default=[]),
+    page: int = Form(default=1),
+    status: str = Form(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    redirect_url = ios_problems_url(page, status.strip())
+    if not asset_ids:
+        return RedirectResponse(redirect_url, status_code=303)
+    client = ImmichClient()
+    for asset_id in asset_ids:
+        asset = client.find_asset_by_id(asset_id)
+        job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+    return RedirectResponse("/jobs", status_code=303)
+
+
 @app.post("/jobs/process-asset")
 def process_asset(asset: str = Form(...)):
     if not processing_is_configured():
@@ -495,18 +590,8 @@ def process_all_videos():
 def repair_all_ios_problem_videos():
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
-    client = ImmichClient()
-    page = 1
-    while True:
-        videos, _ = client.search_videos(page=page, size=100)
-        if not videos:
-            break
-        for asset in videos:
-            job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
-        if len(videos) < 100:
-            break
-        page += 1
-    return RedirectResponse("/jobs", status_code=303)
+    ios_problem_scanner.start()
+    return RedirectResponse("/ios-problems", status_code=303)
 
 
 @app.post("/jobs/cancel-all")
@@ -592,6 +677,8 @@ def accept_job(asset_id: str):
         upload_copy(asset_id, trash_original=True)
     except Exception as exc:
         db.update_job(asset_id, state="copy-failed", error=str(exc))
+        if job["job_kind"] == IOS_REPAIR_JOB_KIND:
+            ios_problem_db.update_status(asset_id, "copy-failed", str(exc))
     return RedirectResponse(f"/jobs/{asset_id}", status_code=303)
 
 

@@ -19,9 +19,10 @@ This repo is an early scaffold. It can:
 - copy metadata with ExifTool
 - leave the compressed output in review state
 - queue selected or all unprocessed videos without duplicate processing
-- scan selected videos or the whole library for iOS-hostile video streams
-- transcode problematic files to H.264/AAC MP4 with HLG/PQ-to-SDR BT.709 tone mapping
-- upload repaired files, copy Immich metadata, and trash the original after a successful repair
+- scan the whole library for iOS-hostile video streams and cache findings separately
+- show cached problem videos on a dedicated iOS Problems page
+- transcode selected problem files to H.264/AAC MP4 with HLG/PQ-to-SDR BT.709 tone mapping
+- send repaired files through the same review/accept replacement flow as compressed files
 - cancel individual jobs or cancel active work and clear the entire queue
 
 Accepted videos are uploaded as new Immich assets, then Immich-side details are copied from the original asset with `copyAsset`. The original asset id and copied asset id are both tracked in this app.
@@ -104,22 +105,37 @@ AV1 encoding uses CPU-based SVT-AV1 at the configured fixed CRF. No GPU passthro
 
 The Videos page has two repair actions:
 
-- `Repair Selected for iOS`
-- `Repair iOS Problem Videos`
+- `iOS Problems`: opens the cached problem-video list
+- `Scan Library`: probes Immich videos and caches only videos that need repair
+- `Repair Selected`: queues selected cached problem videos for repair
 
-Repair jobs download the original, run `ffprobe`, and only transcode files that look unsafe for
-iOS playback. The current detector catches non-H.264/HEVC video, VP9 Profile 2 / 10-bit video,
-HDR streams that are not already iOS-friendly HEVC, non-MP4/MOV-family containers, and non-friendly
-audio codecs.
+The scanner downloads each original, runs `ffprobe`, caches problem findings in
+`/data/immich-ios-problems.sqlite`, then removes the temporary scan copy. The current detector
+catches non-H.264/HEVC video, VP9 Profile 2 / 10-bit video, HDR streams that are not already
+iOS-friendly HEVC, non-MP4/MOV-family containers, and non-friendly audio codecs.
 
-Problem files are transcoded with the system `ffmpeg` to H.264/AAC MP4. HDR sources are tone-mapped
-through `zscale` and `tonemap` into SDR BT.709 so HLG clips do not upload back as the very dark
-browser transcodes you saw. ExifTool copies applicable embedded metadata while excluding source HDR
-color tags that would no longer describe the repaired SDR output.
+Problem files are transcoded with the system `ffmpeg` to H.264/AAC MP4 using `h264_nvenc` by
+default. HDR sources are tone-mapped through `zscale` and `tonemap` into SDR BT.709 so HLG clips do
+not upload back as the very dark browser transcodes you saw. ExifTool copies applicable embedded
+metadata while excluding source HDR color tags that would no longer describe the repaired SDR output.
 
-Unlike AV1 compression, successful iOS repair jobs always run the replacement flow: upload the
-processed MP4, copy Immich-side metadata, then trash the original asset. If upload, metadata copy,
-or trashing fails, the job is left in a failed state for inspection.
+Repair jobs write progress and ffmpeg output to the normal job log. In `review` mode, the repaired
+MP4 waits for you to accept or reject it. Accepting uploads the processed MP4, copies Immich-side
+metadata, then trashes the original asset. In `auto` mode, that replacement flow runs after a
+successful repair.
+
+Set these compose options for GPU repair encoding:
+
+```yaml
+gpus: all
+environment:
+  NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+  IOS_REPAIR_ENCODER: h264_nvenc
+  IOS_REPAIR_CQ: "19"
+```
+
+`IOS_REPAIR_ENCODER` defaults to `h264_nvenc`; `IOS_REPAIR_CQ` controls NVENC quality where lower
+is larger/better.
 
 ## Accepting reviewed files
 

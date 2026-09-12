@@ -59,7 +59,7 @@ class IosRepairTest(unittest.TestCase):
         self.assertFalse(analysis.needs_repair)
         self.assertEqual(analysis.reasons, ())
 
-    def test_builds_h264_aac_bt709_repair_command(self) -> None:
+    def test_builds_nvenc_h264_aac_bt709_repair_command(self) -> None:
         probe = MediaProbe(
             format_name="mov,mp4,m4a,3gp,3g2,mj2",
             video_codec="vp9",
@@ -79,10 +79,11 @@ class IosRepairTest(unittest.TestCase):
             Path("input.mov"),
             Path("output.mp4"),
             probe,
-            Settings(ffmpeg="ffmpeg"),
+            Settings(ffmpeg="ffmpeg", ios_repair_encoder="h264_nvenc", ios_repair_cq=21),
         )
 
-        self.assertEqual(command[command.index("-c:v") + 1], "libx264")
+        self.assertEqual(command[command.index("-c:v") + 1], "h264_nvenc")
+        self.assertEqual(command[command.index("-cq") + 1], "21")
         self.assertEqual(command[command.index("-c:a") + 1], "aac")
         self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
         self.assertEqual(command[command.index("-color_trc") + 1], "bt709")
