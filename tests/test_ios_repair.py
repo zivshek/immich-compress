@@ -137,6 +137,30 @@ class IosRepairTest(unittest.TestCase):
         self.assertNotIn("-vf", command)
         self.assertNotIn("tonemap", command)
 
+    def test_builds_hevc_nvenc_command_with_hvc1_tag(self) -> None:
+        command = build_ios_repair_command(
+            Path("input.mov"),
+            Path("output.mp4"),
+            Settings(ffmpeg="ffmpeg", ios_repair_encoder="hevc_nvenc"),
+        )
+
+        self.assertEqual(command[command.index("-c:v") + 1], "hevc_nvenc")
+        self.assertEqual(command[command.index("-profile:v") + 1], "main10")
+        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p10le")
+        self.assertEqual(command[command.index("-tag:v") + 1], "hvc1")
+
+    def test_builds_h264_nvenc_command_without_stream_tag(self) -> None:
+        command = build_ios_repair_command(
+            Path("input.mov"),
+            Path("output.mp4"),
+            Settings(ffmpeg="ffmpeg", ios_repair_encoder="h264_nvenc"),
+        )
+
+        self.assertEqual(command[command.index("-c:v") + 1], "h264_nvenc")
+        self.assertEqual(command[command.index("-profile:v") + 1], "high")
+        self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
+        self.assertNotIn("-tag:v", command)
+
     def test_exiftool_copy_excludes_source_color_tags(self) -> None:
         copied_args = ""
 

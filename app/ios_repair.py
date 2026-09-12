@@ -132,6 +132,17 @@ def build_ios_repair_command(
     output_path: Path,
     config: Settings,
 ) -> list[str]:
+    encoder = (config.ios_repair_encoder or "").lower()
+    if "av1" in encoder:
+        codec_args = ["-profile:v", "main", "-pix_fmt", "yuv420p10le"]
+        tag_args = ["-tag:v", "av01"]
+    elif "hevc" in encoder:
+        codec_args = ["-profile:v", "main10", "-pix_fmt", "yuv420p10le"]
+        tag_args = ["-tag:v", "hvc1"]
+    else:
+        codec_args = ["-profile:v", "high", "-pix_fmt", "yuv420p"]
+        tag_args = []
+
     return [
         config.ffmpeg,
         "-hide_banner",
@@ -157,14 +168,10 @@ def build_ios_repair_command(
         str(config.video_crf),
         "-b:v",
         "0",
-        "-profile:v",
-        "main",
-        "-pix_fmt",
-        "yuv420p10le",
+        *codec_args,
         "-c:a",
         "copy",
-        "-tag:v",
-        "av01",
+        *tag_args,
         "-movflags",
         "+faststart+use_metadata_tags",
         str(output_path),
