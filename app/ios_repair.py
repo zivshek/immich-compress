@@ -134,7 +134,7 @@ def build_ios_repair_command(
 ) -> list[str]:
     encoder = (config.ios_repair_encoder or "").lower()
     if "av1" in encoder:
-        codec_args = ["-profile:v", "main", "-pix_fmt", "yuv420p10le"]
+        codec_args = ["-pix_fmt", "yuv420p10le"]
         tag_args = ["-tag:v", "av01"]
     elif "hevc" in encoder:
         codec_args = ["-profile:v", "main10", "-pix_fmt", "yuv420p10le"]
