@@ -21,7 +21,7 @@ This repo is an early scaffold. It can:
 - queue selected or all unprocessed videos without duplicate processing
 - scan the whole library for iOS-hostile video streams and cache findings separately
 - show cached problem videos on a dedicated iOS Problems page
-- transcode selected problem files to H.264/AAC MP4 with HLG/PQ-to-SDR BT.709 tone mapping
+- transcode selected problem files to AV1 MP4 with the compression CRF, preserving 10-bit HDR color
 - send repaired files through the same review/accept replacement flow as compressed files
 - cancel individual jobs or cancel active work and clear the entire queue
 
@@ -129,10 +129,10 @@ flags only VP9 Profile 2 video in the `yuv420p10le` pixel format with BT.2020 pr
 (ARIB STD-B67) transfer, the combination that is unreliable on iOS. Video codec alone, container
 format, and audio codecs are intentionally not treated as problems.
 
-Problem files are transcoded with the system `ffmpeg` to H.264/AAC MP4 using `h264_nvenc` by
-default. HDR sources are tone-mapped through `zscale` and `tonemap` into SDR BT.709 so HLG clips do
-not upload back as the very dark browser transcodes you saw. ExifTool copies applicable embedded
-metadata while excluding source HDR color tags that would no longer describe the repaired SDR output.
+Problem files are transcoded with `ffmpeg` to AV1 MP4 using `av1_nvenc` by default. The repair
+reuses the compression branch's CRF setting (`VIDEO_CRF`, default 28) and preserves the source
+10-bit HLG HDR color, so the output is not guaranteed to play on every older iOS device. ExifTool
+copies applicable embedded metadata.
 
 Repair jobs write progress and ffmpeg output to the normal job log. In `review` mode, the repaired
 MP4 waits for you to accept or reject it. Accepting uploads the processed MP4, copies Immich-side
@@ -145,12 +145,11 @@ Set these compose options for GPU repair encoding:
 gpus: all
 environment:
   NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
-  IOS_REPAIR_ENCODER: h264_nvenc
-  IOS_REPAIR_CQ: "19"
+  IOS_REPAIR_ENCODER: av1_nvenc
 ```
 
-`IOS_REPAIR_ENCODER` defaults to `h264_nvenc`; `IOS_REPAIR_CQ` controls NVENC quality where lower
-is larger/better.
+`IOS_REPAIR_ENCODER` defaults to `av1_nvenc`. Repair quality follows the AV1 CRF setting from the
+Settings page (`VIDEO_CRF`, default 28); lower CRF values are larger and higher quality.
 
 ## Accepting reviewed files
 

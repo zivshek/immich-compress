@@ -9,8 +9,7 @@ services:
     environment:
       IMMICH_UPLOAD_ROOT: "/immich-upload"
       NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
-      IOS_REPAIR_ENCODER: "h264_nvenc"
-      IOS_REPAIR_CQ: "19"
+      IOS_REPAIR_ENCODER: "av1_nvenc"
       # Connection and compression settings are configured in the web UI.
     volumes:
       - ./immich-compress-data:/data

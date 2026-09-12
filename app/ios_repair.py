@@ -17,7 +17,7 @@ from app.compression import (
 from app.config import Settings, settings
 
 
-IOS_REPAIR_OUTPUT_SUFFIX = "-ios-compatible"
+IOS_REPAIR_OUTPUT_SUFFIX = "-av1"
 HLG_TRANSFER = "arib-std-b67"
 BT2020_PRIMARIES = "bt2020"
 
@@ -130,7 +130,6 @@ def analyze_ios_compatibility(probe: MediaProbe) -> IosCompatibilityAnalysis:
 def build_ios_repair_command(
     input_path: Path,
     output_path: Path,
-    probe: MediaProbe,
     config: Settings,
 ) -> list[str]:
     return [
@@ -148,57 +147,28 @@ def build_ios_repair_command(
         "0",
         "-map_chapters",
         "0",
-        "-vf",
-        build_tonemap_filter(probe),
         "-c:v",
         config.ios_repair_encoder,
         "-preset",
         "p5",
-        "-tune",
-        "hq",
         "-rc",
         "vbr",
         "-cq",
-        str(config.ios_repair_cq),
+        str(config.video_crf),
         "-b:v",
         "0",
         "-profile:v",
-        "high",
-        "-level",
-        "4.2",
+        "main",
         "-pix_fmt",
-        "yuv420p",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
-        "-color_range",
-        "tv",
+        "yuv420p10le",
         "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
+        "copy",
+        "-tag:v",
+        "av01",
         "-movflags",
         "+faststart+use_metadata_tags",
         str(output_path),
     ]
-
-
-def build_tonemap_filter(probe: MediaProbe) -> str:
-    color_transfer = (probe.color_transfer or "").lower()
-    color_primaries = (probe.color_primaries or "").lower()
-    if color_transfer == HLG_TRANSFER or color_primaries == BT2020_PRIMARIES:
-        return (
-            "zscale=transfer=linear:npl=100,"
-            "format=gbrpf32le,"
-            "tonemap=tonemap=hable:desat=0,"
-            "zscale=primaries=bt709:transfer=bt709:matrix=bt709:range=tv,"
-            "scale=trunc(iw/2)*2:trunc(ih/2)*2,"
-            "format=yuv420p"
-        )
-    return "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"
 
 
 def repair_video_for_ios(
@@ -211,7 +181,7 @@ def repair_video_for_ios(
     probe = probe_media(input_path, config)
     analysis = analyze_ios_compatibility(probe)
     if not analysis.needs_repair:
-        raise RuntimeError("Video already appears iOS-compatible; repair is not required")
+        raise RuntimeError("Video already appears compatible; repair is not required")
 
     output_path = get_ios_repair_output_path(input_path, output_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,11 +199,12 @@ def repair_video_for_ios(
         progress_callback(
             "Repairing",
             0,
-            f"Transcoding to H.264/AAC MP4 with {config.ios_repair_encoder} and SDR BT.709 output.",
+            f"Transcoding to AV1 MP4 with {config.ios_repair_encoder} at CRF {config.video_crf}, "
+            "preserving source color.",
         )
     try:
         run_streaming_command(
-            build_ios_repair_command(input_path, output_path, probe, config),
+            build_ios_repair_command(input_path, output_path, config),
             env,
             log_lines,
             progress_callback,
@@ -241,7 +212,7 @@ def repair_video_for_ios(
             "Repairing",
         )
         if not output_path.is_file() or output_path.stat().st_size == 0:
-            raise RuntimeError("iOS repair output file does not exist or is empty")
+            raise RuntimeError("Repair output file does not exist or is empty")
         if progress_callback:
             progress_callback("Metadata", 100, "Copying applicable metadata with ExifTool")
         copy_metadata_for_ios_repair(input_path, output_path, config)
@@ -256,7 +227,7 @@ def repair_video_for_ios(
         progress_callback(
             "Complete",
             100,
-            f"Repaired to iOS-compatible MP4: {processed_size / 1048576:.1f} MB.",
+            f"Repaired to AV1 MP4: {processed_size / 1048576:.1f} MB.",
         )
     return IosRepairResult(
         output_path=output_path,
