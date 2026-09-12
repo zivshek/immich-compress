@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import db, ios_problem_db
-from app.config import effective_settings, normalize_mode, settings
+from app.config import Settings, effective_settings, normalize_mode
 from app.immich import ImmichClient
 from app.ios_problem_scan import ios_problem_scanner
 from app.ios_problem_db import parse_json_list
@@ -198,6 +198,13 @@ def ios_problems_url(page: int, status: str = "") -> str:
     return f"/ios-problems?{urlencode(query)}"
 
 
+def immich_web_base_url(current: Settings) -> str:
+    base = (current.immich_web_url or current.immich_url).strip().rstrip("/")
+    if base.lower().endswith("/api"):
+        base = base[:-4].rstrip("/")
+    return base
+
+
 def settings_page_context(message: str | None = None) -> dict[str, object]:
     current = effective_settings()
     return {
@@ -249,6 +256,7 @@ def settings_page(request: Request):
 def save_settings(
     request: Request,
     immich_url: str = Form(...),
+    immich_web_url: str = Form(default=""),
     immich_api_key: str = Form(default=""),
     video_crf: int = Form(...),
     video_taken_before: str = Form(default=""),
@@ -256,6 +264,7 @@ def save_settings(
     replacement_mode: str = Form(...),
 ):
     immich_url = immich_url.strip().rstrip("/")
+    immich_web_url = immich_web_url.strip().rstrip("/")
     immich_api_key = immich_api_key.strip()
     video_taken_before = video_taken_before.strip()
     current = effective_settings()
@@ -263,6 +272,7 @@ def save_settings(
     submitted = replace(
         current,
         immich_url=immich_url,
+        immich_web_url=immich_web_url,
         immich_api_key=saved_api_key,
         video_crf=video_crf,
         video_taken_before=video_taken_before,
@@ -274,6 +284,8 @@ def save_settings(
         errors.append("Immich URL is required.")
     elif not immich_url.startswith(("http://", "https://")):
         errors.append("Immich URL must begin with http:// or https://.")
+    if immich_web_url and not immich_web_url.startswith(("http://", "https://")):
+        errors.append("Immich Web URL must begin with http:// or https:// when provided.")
     if not saved_api_key:
         errors.append("Immich API key is required.")
     if video_taken_before:
@@ -297,6 +309,7 @@ def save_settings(
         )
 
     db.set_setting("immich_url", immich_url)
+    db.set_setting("immich_web_url", immich_web_url)
     if immich_api_key:
         db.set_setting("immich_api_key", immich_api_key)
     db.set_setting("video_crf", str(video_crf))
@@ -360,6 +373,7 @@ def videos_page(
 ):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
+    current_settings = effective_settings()
     client = ImmichClient()
     page_size = 10
     search = search.strip()
@@ -398,7 +412,8 @@ def videos_page(
         request,
         "videos.html",
         {
-            "settings": effective_settings(),
+            "settings": current_settings,
+            "immich_web_base": immich_web_base_url(current_settings),
             "rows": rows,
             "page": page,
             "page_size": page_size,
@@ -428,6 +443,7 @@ def ios_problems_page(
 ):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
+    current_settings = effective_settings()
     statuses = ios_problem_db.list_problem_statuses()
     status = status.strip()
     if status and status not in statuses:
@@ -457,7 +473,8 @@ def ios_problems_page(
         request,
         "ios_problems.html",
         {
-            "settings": effective_settings(),
+            "settings": current_settings,
+            "immich_web_base": immich_web_base_url(current_settings),
             "rows": rows,
             "scanner": ios_problem_scanner.snapshot(),
             "page": page,
@@ -478,6 +495,14 @@ def scan_ios_problems():
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
     ios_problem_scanner.start()
+    return RedirectResponse("/ios-problems", status_code=303)
+
+
+@app.post("/ios-problems/clear")
+def clear_ios_problems():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    ios_problem_db.clear_all()
     return RedirectResponse("/ios-problems", status_code=303)
 
 
@@ -633,6 +658,7 @@ def job_detail(request: Request, asset_id: str):
     job = db.get_job(asset_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    current_settings = effective_settings()
     asset_info = {}
     try:
         client = ImmichClient()
@@ -644,7 +670,8 @@ def job_detail(request: Request, asset_id: str):
         request,
         "job_detail.html",
         {
-            "settings": effective_settings(),
+            "settings": current_settings,
+            "immich_web_base": immich_web_base_url(current_settings),
             "job": job,
             "asset_info": asset_info,
             "can_cancel": job["state"] in {"pending", "compressing", "repairing"},

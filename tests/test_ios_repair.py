@@ -59,6 +59,69 @@ class IosRepairTest(unittest.TestCase):
         self.assertFalse(analysis.needs_repair)
         self.assertEqual(analysis.reasons, ())
 
+    def test_leaves_h264_with_unfriendly_audio_alone(self) -> None:
+        probe = MediaProbe(
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
+            video_codec="h264",
+            video_profile="High",
+            pixel_format="yuv420p",
+            width=1920,
+            height=1080,
+            rotation=0,
+            color_primaries="bt709",
+            color_transfer="bt709",
+            color_space="bt709",
+            audio_codecs=("opus",),
+            handler_name=None,
+        )
+
+        analysis = analyze_ios_compatibility(probe)
+
+        self.assertFalse(analysis.needs_repair)
+        self.assertEqual(analysis.reasons, ())
+
+    def test_leaves_non_profile_2_vp9_sdr_alone(self) -> None:
+        probe = MediaProbe(
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
+            video_codec="vp9",
+            video_profile="Profile 0",
+            pixel_format="yuv420p",
+            width=1920,
+            height=1080,
+            rotation=0,
+            color_primaries="bt709",
+            color_transfer="bt709",
+            color_space="bt709",
+            audio_codecs=("aac",),
+            handler_name=None,
+        )
+
+        analysis = analyze_ios_compatibility(probe)
+
+        self.assertFalse(analysis.needs_repair)
+        self.assertEqual(analysis.reasons, ())
+
+    def test_leaves_hevc_hdr_alone(self) -> None:
+        probe = MediaProbe(
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
+            video_codec="hevc",
+            video_profile="Main 10",
+            pixel_format="yuv420p10le",
+            width=3840,
+            height=2160,
+            rotation=0,
+            color_primaries="bt2020",
+            color_transfer="smpte2084",
+            color_space="bt2020nc",
+            audio_codecs=("aac",),
+            handler_name=None,
+        )
+
+        analysis = analyze_ios_compatibility(probe)
+
+        self.assertFalse(analysis.needs_repair)
+        self.assertEqual(analysis.reasons, ())
+
     def test_builds_nvenc_h264_aac_bt709_repair_command(self) -> None:
         probe = MediaProbe(
             format_name="mov,mp4,m4a,3gp,3g2,mj2",

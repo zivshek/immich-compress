@@ -29,6 +29,7 @@ def normalize_mode(value: str) -> str:
 @dataclass(frozen=True)
 class Settings:
     immich_url: str = os.environ.get("IMMICH_URL", "")
+    immich_web_url: str = os.environ.get("IMMICH_WEB_URL", "")
     immich_api_key: str = os.environ.get("IMMICH_API_KEY", "")
     data_dir: Path = Path(os.environ.get("DATA_DIR", "/data"))
     upload_root: Path = Path(os.environ.get("IMMICH_UPLOAD_ROOT", "/immich-upload"))
@@ -60,6 +61,7 @@ def effective_settings() -> Settings:
     return replace(
         settings,
         immich_url=db.get_setting("immich_url", settings.immich_url),
+        immich_web_url=db.get_setting("immich_web_url", settings.immich_web_url),
         immich_api_key=db.get_setting("immich_api_key", settings.immich_api_key),
         video_crf=int(db.get_setting("video_crf", str(settings.video_crf))),
         video_taken_before=db.get_setting("video_taken_before", settings.video_taken_before),

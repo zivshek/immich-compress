@@ -2,8 +2,8 @@
 
 Immich Compress is a sidecar app for compressing existing Immich videos with SVT-AV1 while
 preserving resolution, orientation, audio, chapters, and metadata. It also includes a one-time
-iOS compatibility repair flow for videos that probe as awkward combinations such as VP9 Profile 2
-10-bit HLG HDR in a MOV container.
+iOS compatibility repair flow for videos that probe as VP9 Profile 2 10-bit HLG HDR
+(`yuv420p10le` pixels with BT.2020 primaries).
 
 It is intentionally separate from Immich so you can maintain and deploy it without carrying an Immich source fork.
 
@@ -90,6 +90,10 @@ docker compose up -d --build
 Connection, AV1 CRF, concurrency, and workflow mode are configured from the Settings page and stored in
 `/data/immich-compress.sqlite`. Environment variables remain optional bootstrap fallbacks.
 
+The Immich URL is the address this container uses to reach Immich. When your browser reaches Immich
+at a different address, set the optional Immich Web URL so "Open in Immich" links work from your
+browser; leave it blank to reuse the Immich URL.
+
 AV1 encoding defaults to CRF 28 and performs a single full encode without sampling or
 comparison passes. Lower CRF values retain more quality and produce larger files; higher values
 save more space. Select **Process All Unprocessed** on the Videos page to apply it to all existing videos.
@@ -103,16 +107,21 @@ AV1 encoding uses CPU-based SVT-AV1 at the configured fixed CRF. No GPU passthro
 
 ## iOS compatibility repair
 
-The Videos page has two repair actions:
+The iOS Problems page provides these actions:
 
-- `iOS Problems`: opens the cached problem-video list
 - `Scan Library`: probes Immich videos and caches only videos that need repair
+- `Clear Problem Videos`: clears the cached list so the next scan rebuilds it from scratch
 - `Repair Selected`: queues selected cached problem videos for repair
+
+Scan Library is incremental: videos already present in the problem cache are skipped, so repeat
+scans only download and probe videos that have not been cached yet. Use `Clear Problem Videos`
+first when you want a full rescan.
 
 The scanner downloads each original, runs `ffprobe`, caches problem findings in
 `/data/immich-ios-problems.sqlite`, then removes the temporary scan copy. The current detector
-catches non-H.264/HEVC video, VP9 Profile 2 / 10-bit video, HDR streams that are not already
-iOS-friendly HEVC, non-MP4/MOV-family containers, and non-friendly audio codecs.
+flags only VP9 Profile 2 video in the `yuv420p10le` pixel format with BT.2020 primaries and HLG
+(ARIB STD-B67) transfer, the combination that is unreliable on iOS. Video codec alone, container
+format, and audio codecs are intentionally not treated as problems.
 
 Problem files are transcoded with the system `ffmpeg` to H.264/AAC MP4 using `h264_nvenc` by
 default. HDR sources are tone-mapped through `zscale` and `tonemap` into SDR BT.709 so HLG clips do

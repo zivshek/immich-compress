@@ -12,6 +12,11 @@
         <small>Address this container can use to reach Immich. A LAN address is usually simplest for standalone deployments.</small>
       </label>
       <label>
+        Immich Web URL
+        <input name="immich_web_url" type="url" value="{{ settings.immich_web_url }}" placeholder="Optional - leave blank to use Immich URL">
+        <small>Browser-facing address used for "Open in Immich" links. Set this when your browser reaches Immich at a different URL than this container does.</small>
+      </label>
+      <label>
         API Key
         <input name="immich_api_key" type="password" value="" placeholder="{{ 'Configured - leave blank to keep' if settings.immich_api_key else 'Paste an Immich API key' }}" autocomplete="new-password">
         <small>Used to read, upload, copy metadata, and trash original assets. New keys are stored in the app database under /data; leave blank to keep the current key.</small>

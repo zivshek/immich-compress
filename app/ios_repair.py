@@ -18,11 +18,8 @@ from app.config import Settings, settings
 
 
 IOS_REPAIR_OUTPUT_SUFFIX = "-ios-compatible"
-IOS_FRIENDLY_VIDEO_CODECS = {"h264", "hevc"}
-IOS_FRIENDLY_AUDIO_CODECS = {"aac", "alac", "mp3"}
-MP4_FORMAT_MARKERS = {"mov", "mp4", "m4a", "3gp", "3g2", "mj2"}
-HDR_TRANSFERS = {"arib-std-b67", "smpte2084"}
-HDR_PRIMARIES = {"bt2020"}
+HLG_TRANSFER = "arib-std-b67"
+BT2020_PRIMARIES = "bt2020"
 
 
 @dataclass(frozen=True)
@@ -109,33 +106,25 @@ def probe_media(path: Path, config: Settings = settings) -> MediaProbe:
 
 
 def analyze_ios_compatibility(probe: MediaProbe) -> IosCompatibilityAnalysis:
-    reasons: list[str] = []
     codec = (probe.video_codec or "").lower()
     profile = (probe.video_profile or "").lower()
     pixel_format = (probe.pixel_format or "").lower()
-    format_name = (probe.format_name or "").lower()
     color_transfer = (probe.color_transfer or "").lower()
     color_primaries = (probe.color_primaries or "").lower()
 
-    is_mp4_family = any(marker in format_name.split(",") for marker in MP4_FORMAT_MARKERS)
-    is_hdr = color_transfer in HDR_TRANSFERS or color_primaries in HDR_PRIMARIES
-    is_vp9_profile_2 = codec == "vp9" and ("profile 2" in profile or "10" in pixel_format)
-
-    if codec not in IOS_FRIENDLY_VIDEO_CODECS:
-        reasons.append(f"video codec is {probe.video_codec or 'unknown'}, not H.264/HEVC")
-    if is_vp9_profile_2:
-        reasons.append("VP9 Profile 2 / 10-bit video is unreliable on iOS")
-    if is_hdr and codec != "hevc":
-        reasons.append("HDR video is not in an iOS-friendly HEVC stream")
-    if not is_mp4_family:
-        reasons.append(f"container is {probe.format_name or 'unknown'}, not MP4/MOV family")
-    unsupported_audio = sorted(
-        {audio for audio in probe.audio_codecs if audio.lower() not in IOS_FRIENDLY_AUDIO_CODECS}
+    is_problematic_vp9_hlg = (
+        codec == "vp9"
+        and "profile 2" in profile
+        and pixel_format == "yuv420p10le"
+        and color_primaries == BT2020_PRIMARIES
+        and color_transfer == HLG_TRANSFER
     )
-    if unsupported_audio:
-        reasons.append(f"audio codec is not iOS-friendly: {', '.join(unsupported_audio)}")
-
-    return IosCompatibilityAnalysis(bool(reasons), tuple(reasons))
+    reasons = (
+        ("VP9 Profile 2 yuv420p10le BT.2020/HLG HDR is unreliable on iOS",)
+        if is_problematic_vp9_hlg
+        else ()
+    )
+    return IosCompatibilityAnalysis(is_problematic_vp9_hlg, reasons)
 
 
 def build_ios_repair_command(
@@ -200,7 +189,7 @@ def build_ios_repair_command(
 def build_tonemap_filter(probe: MediaProbe) -> str:
     color_transfer = (probe.color_transfer or "").lower()
     color_primaries = (probe.color_primaries or "").lower()
-    if color_transfer in HDR_TRANSFERS or color_primaries in HDR_PRIMARIES:
+    if color_transfer == HLG_TRANSFER or color_primaries == BT2020_PRIMARIES:
         return (
             "zscale=transfer=linear:npl=100,"
             "format=gbrpf32le,"

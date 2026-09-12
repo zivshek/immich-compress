@@ -17,6 +17,7 @@ class IosProblemScanner:
         self.cancel_event = threading.Event()
         self.scanned = 0
         self.found = 0
+        self.skipped = 0
         self.total: int | None = None
         self.current_file = ""
         self.last_error = ""
@@ -29,6 +30,7 @@ class IosProblemScanner:
             self.cancel_event.clear()
             self.scanned = 0
             self.found = 0
+            self.skipped = 0
             self.total = None
             self.current_file = ""
             self.last_error = ""
@@ -48,6 +50,7 @@ class IosProblemScanner:
                 "running": self.running,
                 "scanned": scanned,
                 "found": self.found,
+                "skipped": self.skipped,
                 "total": total,
                 "percent": percent,
                 "current_file": self.current_file,
@@ -86,6 +89,9 @@ class IosProblemScanner:
         asset_id = asset["id"]
         original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
         self._set(current_file=original_name)
+        if ios_problem_db.has_row(asset_id):
+            self._increment(scanned=1, skipped=1)
+            return
         asset_dir = scan_root / asset_id
         input_path = asset_dir / original_name
         try:
@@ -111,10 +117,11 @@ class IosProblemScanner:
             for key, value in values.items():
                 setattr(self, key, value)
 
-    def _increment(self, *, scanned: int = 0, found: int = 0) -> None:
+    def _increment(self, *, scanned: int = 0, found: int = 0, skipped: int = 0) -> None:
         with self.lock:
             self.scanned += scanned
             self.found += found
+            self.skipped += skipped
 
 
 ios_problem_scanner = IosProblemScanner()

@@ -37,13 +37,18 @@
       <form method="post" action="/ios-problems/scan">
         <button type="submit">Scan Library</button>
       </form>
+      <form method="post" action="/ios-problems/clear">
+        <button class="danger-button" type="submit" onclick="return confirm('Clear all cached iOS problem videos? Run Scan Library afterward to rebuild the list.')">Clear Problem Videos</button>
+      </form>
       {% endif %}
     </div>
   </div>
   <div class="progress-track">
     <div class="progress-fill" style="width: {{ scanner.percent or 0 }}%"></div>
   </div>
-  <small>{{ scanner.found }} problem videos found in this scan.</small>
+  <small>
+    {{ scanner.found }} new problem videos found{% if scanner.skipped %}, {{ scanner.skipped }} skipped (already cached){% endif %}.
+  </small>
 </section>
 
 <section>
@@ -85,7 +90,7 @@
           <tr>
             <td><input class="check-cell" name="asset_ids" type="checkbox" value="{{ row.problem.asset_id }}"></td>
             <td>
-              <a class="filename" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ row.problem.asset_id }}" target="_blank" rel="noreferrer">{{ row.problem.original_file_name }}</a>
+              <a class="filename" href="{{ immich_web_base }}/photos/{{ row.problem.asset_id }}" target="_blank" rel="noreferrer">{{ row.problem.original_file_name }}</a>
               {% if row.job %}<small><a href="/jobs/{{ row.job.asset_id }}">View job logs</a></small>{% endif %}
               {% if row.problem.local_date_time %}<small>{{ row.problem.local_date_time }}</small>{% endif %}
             </td>

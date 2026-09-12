@@ -35,7 +35,7 @@ class IosProblemDatabaseTest(unittest.TestCase):
                 )
                 analysis = IosCompatibilityAnalysis(
                     True,
-                    ("video codec is vp9, not H.264/HEVC",),
+                    ("VP9 Profile 2 yuv420p10le BT.2020/HLG HDR is unreliable on iOS",),
                 )
 
                 ios_problem_db.upsert_problem(
@@ -58,11 +58,46 @@ class IosProblemDatabaseTest(unittest.TestCase):
                 self.assertEqual(rows[0]["status"], "problem")
                 self.assertEqual(
                     ios_problem_db.parse_json_list(rows[0]["reasons"]),
-                    ["video codec is vp9, not H.264/HEVC"],
+                    ["VP9 Profile 2 yuv420p10le BT.2020/HLG HDR is unreliable on iOS"],
                 )
 
                 ios_problem_db.mark_not_problem("asset-1")
                 self.assertEqual(ios_problem_db.count_problems(), 0)
+            finally:
+                ios_problem_db.settings = original_settings
+
+    def test_has_row_and_clear_all(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            original_settings = ios_problem_db.settings
+            ios_problem_db.settings = replace(settings, data_dir=Path(directory))
+            try:
+                ios_problem_db.init_db()
+                ios_problem_db.upsert_problem(
+                    {"id": "asset-1", "originalFileName": "IMG_4083.MOV"},
+                    MediaProbe(
+                        format_name="mov,mp4,m4a,3gp,3g2,mj2",
+                        video_codec="vp9",
+                        video_profile="Profile 2",
+                        pixel_format="yuv420p10le",
+                        width=1080,
+                        height=1920,
+                        rotation=0,
+                        color_primaries="bt2020",
+                        color_transfer="arib-std-b67",
+                        color_space="bt2020nc",
+                        audio_codecs=("aac",),
+                        handler_name=None,
+                    ),
+                    IosCompatibilityAnalysis(True, ("unreliable on iOS",)),
+                )
+
+                self.assertTrue(ios_problem_db.has_row("asset-1"))
+                self.assertFalse(ios_problem_db.has_row("missing"))
+
+                ios_problem_db.clear_all()
+
+                self.assertEqual(ios_problem_db.count_problems(), 0)
+                self.assertFalse(ios_problem_db.has_row("asset-1"))
             finally:
                 ios_problem_db.settings = original_settings
 

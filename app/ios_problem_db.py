@@ -167,6 +167,20 @@ def mark_not_problem(asset_id: str) -> None:
         db.execute("DELETE FROM ios_problem_videos WHERE asset_id = ?", (asset_id,))
 
 
+def has_row(asset_id: str) -> bool:
+    with connect() as db:
+        row = db.execute(
+            "SELECT 1 FROM ios_problem_videos WHERE asset_id = ?",
+            (asset_id,),
+        ).fetchone()
+        return row is not None
+
+
+def clear_all() -> None:
+    with connect() as db:
+        db.execute("DELETE FROM ios_problem_videos")
+
+
 def upsert_scan_error(asset: dict, error: str) -> None:
     now = utc_now()
     exif = asset.get("exifInfo") or {}

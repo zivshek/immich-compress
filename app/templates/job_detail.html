@@ -126,9 +126,9 @@
     {% if job.original_path %}
     <a class="button secondary" href="/jobs/{{ job.asset_id }}/files/original">Download Original</a>
     {% endif %}
-    <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.asset_id }}" target="_blank" rel="noreferrer">Open in Immich</a>
+    <a class="button secondary" href="{{ immich_web_base }}/photos/{{ job.asset_id }}" target="_blank" rel="noreferrer">Open in Immich</a>
     {% if job.target_asset_id %}
-    <a class="button secondary" href="{{ settings.immich_url.rstrip('/') }}/photos/{{ job.target_asset_id }}" target="_blank" rel="noreferrer">Open Copied Asset</a>
+    <a class="button secondary" href="{{ immich_web_base }}/photos/{{ job.target_asset_id }}" target="_blank" rel="noreferrer">Open Copied Asset</a>
     {% endif %}
     {% if settings.replacement_mode == "auto" %}
     <p class="notice compact">Auto mode uploads the copy and trashes the original after compression.</p>
