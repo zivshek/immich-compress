@@ -21,7 +21,7 @@ This repo is an early scaffold. It can:
 - queue selected or all unprocessed videos without duplicate processing
 - scan the whole library for iOS-hostile video streams and cache findings separately
 - show cached problem videos on a dedicated iOS Problems page
-- transcode selected problem files to AV1 MP4 with the compression CRF, preserving 10-bit HDR color
+- transcode selected problem files to AV1 MP4 with the compression CRF, tone-mapped to SDR BT.709
 - send repaired files through the same review/accept replacement flow as compressed files
 - cancel individual jobs or cancel active work and clear the entire queue
 
@@ -130,9 +130,9 @@ flags only VP9 Profile 2 video in the `yuv420p10le` pixel format with BT.2020 pr
 format, and audio codecs are intentionally not treated as problems.
 
 Problem files are transcoded with `ffmpeg` to AV1 MP4 using `av1_nvenc` by default. The repair
-reuses the compression branch's CRF setting (`VIDEO_CRF`, default 28) and preserves the source
-10-bit HLG HDR color, so the output is not guaranteed to play on every older iOS device. ExifTool
-copies applicable embedded metadata.
+reuses the compression branch's CRF setting (`VIDEO_CRF`, default 28) and tone-maps the source
+HLG HDR to 8-bit SDR BT.709. ExifTool copies applicable embedded metadata while excluding the
+source HDR color tags that no longer describe the SDR output.
 
 Repair jobs write progress and ffmpeg output to the normal job log. In `review` mode, the repaired
 MP4 waits for you to accept or reject it. Accepting uploads the processed MP4, copies Immich-side
@@ -151,9 +151,9 @@ environment:
 `IOS_REPAIR_ENCODER` defaults to `av1_nvenc`. Repair quality follows the AV1 CRF setting from the
 Settings page (`VIDEO_CRF`, default 28); lower CRF values are larger and higher quality.
 
-The repair command adapts to the configured encoder: `av1_nvenc` writes 10-bit `p010le` AV1 with
-the `av01` tag, `hevc_nvenc` writes 10-bit `main10` (`p010le`) with `hvc1`, and `h264_nvenc` writes
-8-bit `high` profile. If an older image's `ffmpeg` lacks `av1_nvenc`, set
+The repair command adapts to the configured encoder: `av1_nvenc` writes 8-bit AV1 with the `av01`
+tag, `hevc_nvenc` writes 8-bit `main` profile with `hvc1`, and `h264_nvenc` writes 8-bit `high`
+profile. If an older image's `ffmpeg` lacks `av1_nvenc`, set
 `IOS_REPAIR_ENCODER: hevc_nvenc` as a compatible interim fallback.
 
 ## Accepting reviewed files

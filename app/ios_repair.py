@@ -130,14 +130,15 @@ def analyze_ios_compatibility(probe: MediaProbe) -> IosCompatibilityAnalysis:
 def build_ios_repair_command(
     input_path: Path,
     output_path: Path,
+    probe: MediaProbe,
     config: Settings,
 ) -> list[str]:
     encoder = (config.ios_repair_encoder or "").lower()
     if "av1" in encoder:
-        codec_args = ["-pix_fmt", "p010le"]
+        codec_args = ["-pix_fmt", "yuv420p"]
         tag_args = ["-tag:v", "av01"]
     elif "hevc" in encoder:
-        codec_args = ["-profile:v", "main10", "-pix_fmt", "p010le"]
+        codec_args = ["-profile:v", "main", "-pix_fmt", "yuv420p"]
         tag_args = ["-tag:v", "hvc1"]
     else:
         codec_args = ["-profile:v", "high", "-pix_fmt", "yuv420p"]
@@ -158,6 +159,8 @@ def build_ios_repair_command(
         "0",
         "-map_chapters",
         "0",
+        "-vf",
+        build_tonemap_filter(probe),
         "-c:v",
         config.ios_repair_encoder,
         "-preset",
@@ -169,6 +172,14 @@ def build_ios_repair_command(
         "-b:v",
         "0",
         *codec_args,
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-colorspace",
+        "bt709",
+        "-color_range",
+        "tv",
         "-c:a",
         "copy",
         *tag_args,
@@ -176,6 +187,21 @@ def build_ios_repair_command(
         "+faststart+use_metadata_tags",
         str(output_path),
     ]
+
+
+def build_tonemap_filter(probe: MediaProbe) -> str:
+    color_transfer = (probe.color_transfer or "").lower()
+    color_primaries = (probe.color_primaries or "").lower()
+    if color_transfer == HLG_TRANSFER or color_primaries == BT2020_PRIMARIES:
+        return (
+            "zscale=transfer=linear:npl=100,"
+            "format=gbrpf32le,"
+            "tonemap=tonemap=hable:desat=0,"
+            "zscale=primaries=bt709:transfer=bt709:matrix=bt709:range=tv,"
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2,"
+            "format=yuv420p"
+        )
+    return "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"
 
 
 def repair_video_for_ios(
@@ -207,11 +233,11 @@ def repair_video_for_ios(
             "Repairing",
             0,
             f"Transcoding to AV1 MP4 with {config.ios_repair_encoder} at CRF {config.video_crf}, "
-            "preserving source color.",
+            "tone-mapped to SDR BT.709.",
         )
     try:
         run_streaming_command(
-            build_ios_repair_command(input_path, output_path, config),
+            build_ios_repair_command(input_path, output_path, probe, config),
             env,
             log_lines,
             progress_callback,

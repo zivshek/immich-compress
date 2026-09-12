@@ -12,6 +12,7 @@ RUN apt-get update \
       git \
       libdav1d-dev \
       libopus-dev \
+      libzimg-dev \
       nasm \
       ninja-build \
       pkg-config \
@@ -48,6 +49,7 @@ RUN curl -fsSL -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VER
       --enable-libdav1d \
       --enable-libopus \
       --enable-libsvtav1 \
+      --enable-libzimg \
       --enable-nvenc \
       --disable-debug \
       --disable-doc \
@@ -69,6 +71,7 @@ RUN apt-get update \
       libimage-exiftool-perl \
       libsvtav1enc1 \
       libtcmalloc-minimal4 \
+      libzimg2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=av1-ffmpeg-builder /opt/av1 /opt/av1
