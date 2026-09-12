@@ -69,6 +69,8 @@
     <input type="hidden" name="status" value="{{ status_filter }}">
     <div class="toolbar video-actions">
       <button type="submit">Repair Selected</button>
+      <button class="secondary" type="submit" formaction="/ios-problems/mark-repaired" onclick="return confirm('Mark the selected videos as repaired? They will be skipped by Repair Selected and Repair All.')">Mark Repaired</button>
+      <button class="warning-button" type="submit" formaction="/ios-problems/repair-all" onclick="return confirm('Queue every cached problem video for repair?')">Repair All</button>
     </div>
     <div class="table-wrap">
       <table>

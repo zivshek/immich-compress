@@ -393,6 +393,11 @@ th {
   color: var(--accent-strong);
 }
 
+.state-fixed {
+  background: #dcefea;
+  color: var(--accent-strong);
+}
+
 .state-rejected {
   background: #f5dddd;
   color: var(--danger);

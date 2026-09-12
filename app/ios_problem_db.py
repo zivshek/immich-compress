@@ -243,6 +243,28 @@ def update_status(asset_id: str, status: str, error: str | None = None) -> None:
         )
 
 
+def list_statuses(asset_ids: list[str]) -> dict[str, str]:
+    if not asset_ids:
+        return {}
+    placeholders = ",".join("?" for _ in asset_ids)
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT asset_id, status FROM ios_problem_videos WHERE asset_id IN ({placeholders})",
+            asset_ids,
+        )
+        return {row["asset_id"]: row["status"] for row in rows}
+
+
+def list_repairable_asset_ids() -> list[str]:
+    with connect() as db:
+        return [
+            row["asset_id"]
+            for row in db.execute(
+                "SELECT asset_id FROM ios_problem_videos WHERE status = 'problem'"
+            )
+        ]
+
+
 def count_problems(status: str = "") -> int:
     with connect() as db:
         if status:

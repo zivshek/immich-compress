@@ -112,10 +112,16 @@ The iOS Problems page provides these actions:
 - `Scan Library`: probes Immich videos and caches only videos that need repair
 - `Clear Problem Videos`: clears the cached list so the next scan rebuilds it from scratch
 - `Repair Selected`: queues selected cached problem videos for repair
+- `Repair All`: queues every cached problem video for repair
+- `Mark Repaired`: marks selected videos `fixed` without processing them
 
 Scan Library is incremental: videos already present in the problem cache are skipped, so repeat
 scans only download and probe videos that have not been cached yet. Use `Clear Problem Videos`
 first when you want a full rescan.
+
+Videos marked `fixed` are skipped by `Repair Selected` and `Repair All`. `Repair All` only queues
+videos still in the `problem` state, so in-flight, already repaired, failed, and fixed rows are left
+alone. Use the Jobs page to retry failed repair jobs.
 
 The scanner downloads each original, runs `ffprobe`, caches problem findings in
 `/data/immich-ios-problems.sqlite`, then removes the temporary scan copy. The current detector

@@ -205,6 +205,16 @@ def immich_web_base_url(current: Settings) -> str:
     return base
 
 
+def enqueue_ios_repairs(asset_ids: list[str]) -> None:
+    client = ImmichClient()
+    for asset_id in asset_ids:
+        try:
+            asset = client.find_asset_by_id(asset_id)
+            job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+        except Exception as exc:
+            ios_problem_db.update_status(asset_id, "failed", str(exc))
+
+
 def settings_page_context(message: str | None = None) -> dict[str, object]:
     current = effective_settings()
     return {
@@ -523,10 +533,31 @@ def repair_selected_ios_problems(
     redirect_url = ios_problems_url(page, status.strip())
     if not asset_ids:
         return RedirectResponse(redirect_url, status_code=303)
-    client = ImmichClient()
+    statuses = ios_problem_db.list_statuses(asset_ids)
+    repairable_ids = [asset_id for asset_id in asset_ids if statuses.get(asset_id) != "fixed"]
+    enqueue_ios_repairs(repairable_ids)
+    return RedirectResponse("/jobs", status_code=303)
+
+
+@app.post("/ios-problems/mark-repaired")
+def mark_ios_problems_repaired(
+    asset_ids: list[str] = Form(default=[]),
+    page: int = Form(default=1),
+    status: str = Form(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    redirect_url = ios_problems_url(page, status.strip())
     for asset_id in asset_ids:
-        asset = client.find_asset_by_id(asset_id)
-        job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+        ios_problem_db.update_status(asset_id, "fixed")
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.post("/ios-problems/repair-all")
+def repair_all_ios_problems():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    enqueue_ios_repairs(ios_problem_db.list_repairable_asset_ids())
     return RedirectResponse("/jobs", status_code=303)
 
 
@@ -567,10 +598,7 @@ def repair_ios_selected(
     redirect_url = videos_url(page, search.strip())
     if not asset_ids:
         return RedirectResponse(redirect_url, status_code=303)
-    client = ImmichClient()
-    for asset_id in asset_ids:
-        asset = client.find_asset_by_id(asset_id)
-        job_queue.enqueue_asset(asset, job_kind=IOS_REPAIR_JOB_KIND, force=True)
+    enqueue_ios_repairs(asset_ids)
     return RedirectResponse(redirect_url, status_code=303)
 
 

@@ -101,6 +101,46 @@ class IosProblemDatabaseTest(unittest.TestCase):
             finally:
                 ios_problem_db.settings = original_settings
 
+    def test_list_statuses_and_repairable_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            original_settings = ios_problem_db.settings
+            ios_problem_db.settings = replace(settings, data_dir=Path(directory))
+            try:
+                ios_problem_db.init_db()
+                probe = MediaProbe(
+                    format_name="mov,mp4,m4a,3gp,3g2,mj2",
+                    video_codec="vp9",
+                    video_profile="Profile 2",
+                    pixel_format="yuv420p10le",
+                    width=1080,
+                    height=1920,
+                    rotation=0,
+                    color_primaries="bt2020",
+                    color_transfer="arib-std-b67",
+                    color_space="bt2020nc",
+                    audio_codecs=("aac",),
+                    handler_name=None,
+                )
+                analysis = IosCompatibilityAnalysis(True, ("unreliable on iOS",))
+                for asset_id in ("asset-1", "asset-2"):
+                    ios_problem_db.upsert_problem(
+                        {"id": asset_id, "originalFileName": f"{asset_id}.MOV"},
+                        probe,
+                        analysis,
+                    )
+                ios_problem_db.update_status("asset-2", "fixed")
+
+                self.assertEqual(
+                    ios_problem_db.list_statuses(["asset-1", "asset-2", "missing"]),
+                    {"asset-1": "problem", "asset-2": "fixed"},
+                )
+                self.assertEqual(ios_problem_db.list_repairable_asset_ids(), ["asset-1"])
+
+                ios_problem_db.update_status("asset-1", "fixed")
+                self.assertEqual(ios_problem_db.list_repairable_asset_ids(), [])
+            finally:
+                ios_problem_db.settings = original_settings
+
 
 if __name__ == "__main__":
     unittest.main()

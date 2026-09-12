@@ -204,11 +204,18 @@ def parse_asset_id(value: str) -> str:
 def process_asset(asset_id: str, cancel_event: threading.Event) -> None:
     config = effective_settings()
     client = ImmichClient(config)
-    asset = client.find_asset_by_id(asset_id)
-    raise_if_canceled(cancel_event)
-    original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
     job = db.get_job(asset_id)
     job_kind = job["job_kind"] if job and "job_kind" in job.keys() else COMPRESS_JOB_KIND
+    try:
+        asset = client.find_asset_by_id(asset_id)
+    except Exception as exc:
+        message = f"Asset no longer exists in Immich: {exc}"
+        db.update_job(asset_id, state="failed", error=message)
+        if job_kind == IOS_REPAIR_JOB_KIND:
+            ios_problem_db.update_status(asset_id, "failed", message)
+        return
+    raise_if_canceled(cancel_event)
+    original_name = asset.get("originalFileName") or f"{asset_id}.mp4"
     db.update_job(asset_id, process_started_at=db.utc_now())
     if job_kind == COMPRESS_JOB_KIND and is_legacy_processed_filename(original_name):
         current_size = asset.get("originalFileSize") or asset.get("fileSizeInByte")
