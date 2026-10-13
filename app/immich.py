@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import mimetypes
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import requests
 
@@ -76,6 +78,27 @@ class ImmichClient:
     def find_asset_by_id(self, asset_id: str) -> dict[str, Any]:
         return self.request("GET", f"assets/{asset_id}")
 
+    def search_photos(self, page: int = 1, size: int = 100) -> list[dict[str, Any]]:
+        response = self.request("POST", "search/metadata", json={
+            "type": "IMAGE", "page": page, "size": size, "withExif": True,
+            "isTrashed": False, "order": "asc",
+        })
+        return response.get("assets", {}).get("items", [])
+
+    def original_header(self, asset_id: str) -> bytes:
+        with self.session.get(
+            self.api_url(f"assets/{asset_id}/original"),
+            headers={"Range": "bytes=0-63"}, stream=True, timeout=60,
+        ) as response:
+            response.raise_for_status()
+            return next(response.iter_content(chunk_size=64), b"")[:64]
+
+    def update_asset(self, asset_id: str, values: dict[str, Any]) -> Any:
+        return self.request("PUT", f"assets/{asset_id}", json=values)
+
+    def delete_asset_permanently(self, asset_id: str) -> None:
+        self.request("DELETE", "assets", json={"ids": [asset_id], "force": True})
+
     def download_original(
         self,
         asset_id: str,
@@ -93,7 +116,10 @@ class ImmichClient:
                         file.write(chunk)
         return destination
 
-    def upload_asset_copy(self, source_asset: dict[str, Any], replacement_path: Path) -> dict[str, Any]:
+    def upload_asset_copy(
+        self, source_asset: dict[str, Any], replacement_path: Path,
+        *, live_photo_video_id: str | None = None,
+    ) -> dict[str, Any]:
         data = {
             "deviceAssetId": f"immich-compress-{source_asset['id']}",
             "deviceId": "immich-compress",
@@ -103,12 +129,17 @@ class ImmichClient:
         }
         if source_asset.get("duration"):
             data["duration"] = source_asset["duration"]
+        if live_photo_video_id:
+            data["livePhotoVideoId"] = live_photo_video_id
 
         with replacement_path.open("rb") as file:
             response = self.session.post(
                 self.api_url("assets"),
                 data=data,
-                files={"assetData": (data["filename"], file, "video/mp4")},
+                files={"assetData": (
+                    data["filename"], file,
+                    mimetypes.guess_type(replacement_path.name)[0] or "application/octet-stream",
+                )},
                 timeout=600,
             )
         response.raise_for_status()
@@ -162,7 +193,15 @@ class ImmichClient:
         return [album["albumName"] for album in memberships.get(asset_id, [])]
 
     def add_asset_to_album(self, asset_id: str, album_id: str) -> None:
-        self.request("PUT", f"albums/{album_id}/assets", json={"ids": [asset_id]})
+        result = self.request("PUT", f"albums/{album_id}/assets", json={"ids": [asset_id]})
+        check_bulk_results(result)
 
     def trash_asset(self, asset_id: str) -> None:
         self.request("DELETE", "assets", json={"ids": [asset_id], "force": False})
+
+
+def check_bulk_results(result: Any) -> None:
+    if isinstance(result, list):
+        for item in result:
+            if item.get("success") is False and item.get("error") != "duplicate":
+                raise RuntimeError(f"Immich association could not be restored: {item.get('error')}")

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+{% if worker.running %}<script>window.setTimeout(() => window.location.reload(), 3000);</script>{% endif %}
+<section class="detail-header">
+  <div>
+    <h1>Photo Problems</h1>
+    <p class="subtle">Find JPEG photos mislabeled as .HEIC and restore correct display without recompression.</p>
+  </div>
+  <span class="state">{{ total }} cached</span>
+</section>
+<section class="panel progress-panel">
+  <div class="progress-header">
+    <div>
+      <strong>{% if worker.running %}{{ 'Scanning library' if worker.mode == 'scan' else 'Repairing photos' }}{% else %}Idle{% endif %}</strong>
+      <small>{{ worker.scanned }} checked{% if worker.mode == 'scan' %}, {{ worker.found }} problems found{% endif %}</small>
+      {% if worker.current_file %}<small>{{ worker.current_file }}</small>{% endif %}
+      {% if worker.last_error %}<small class="error">{{ worker.last_error }}</small>{% endif %}
+    </div>
+    <div class="toolbar compact-toolbar">
+      {% if worker.running %}
+      <form method="post" action="/photo-problems/cancel"><button class="danger-button">Stop After Current Photo</button></form>
+      {% else %}
+      <form method="post" action="/photo-problems/scan"><button>Scan Library</button></form>
+      <form method="post" action="/photo-problems/clear"><button class="secondary">Reset Scan Cache</button></form>
+      {% endif %}
+    </div>
+  </div>
+  <p class="subtle">Scanning checks file signatures and does not change your library. Repairs download and verify the originals, permanently delete the mislabeled photo, and upload a .jpg copy. Live Photo videos are backed up, detached before deletion, uploaded or reused, and paired with the new photo.</p>
+  <p class="subtle">Local backups remain available after repair and after failures. Retry failed photos with Repair Selected. Albums, favorites, tags, direct shared links, visibility, and supported date/location/description metadata are restored. Unstack photos before repairing. External-library files require repair in their source folder; face assignments are not transferred.</p>
+</section>
+<section>
+  <div class="toolbar jobs-toolbar">
+    <form method="get" action="/photo-problems" class="inline-form">
+      <select name="status" aria-label="Filter photo problems">
+        <option value="">All statuses</option>
+        {% for status in statuses %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+      </select>
+      <button>Filter</button>
+    </form>
+  </div>
+  <form method="post" action="/photo-problems/repair-selected">
+    <div class="toolbar video-actions">
+      <button {% if worker.running %}disabled{% endif %} onclick="return confirm('Replace selected photos? Verified local backups will be retained. Originals are permanently deleted so the renamed JPEGs can be re-uploaded.')">Repair Selected / Retry</button>
+      <button class="warning-button" formaction="/photo-problems/repair-all" {% if worker.running %}disabled{% endif %} onclick="return confirm('Replace all photos in the problem state? Verified local backups will be retained. Originals are permanently deleted before re-upload.')">Repair All</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th><input type="checkbox" aria-label="Select all repairable photos" onclick="document.querySelectorAll('input[name=asset_ids]:not(:disabled)').forEach(cb => cb.checked = this.checked)"></th>
+        <th>File</th><th>Live Photo</th><th>Status</th><th>Details / Backup</th>
+      </tr></thead>
+      <tbody>
+        {% for row in rows %}<tr>
+          <td><input type="checkbox" name="asset_ids" aria-label="Select {{ row.original_file_name }}" value="{{ row.asset_id }}" {% if row.status not in ['problem', 'failed'] or worker.running %}disabled{% endif %}></td>
+          <td><a class="filename" href="{{ immich_web_base }}/photos/{{ row.target_asset_id or row.asset_id }}" target="_blank" rel="noreferrer">{{ row.original_file_name }}</a></td>
+          <td>{{ 'Yes' if row.live_photo_video_id else 'No' }}</td>
+          <td><span class="state state-{{ row.status }}">{{ row.status }}</span></td>
+          <td>
+            {% if row.error %}<small class="error">{{ row.error }}</small>{% endif %}
+            {% if row.status == 'problem' %}<small>JPEG content with .HEIC filename</small>{% endif %}
+            {% if row.manifest %}
+            <a href="/photo-problems/{{ row.asset_id }}/backup/photo">Download JPEG backup</a>
+            {% if row.live_photo_video_id %} · <a href="/photo-problems/{{ row.asset_id }}/backup/video">Download motion backup</a>{% endif %}
+            · <a href="/photo-problems/{{ row.asset_id }}/backup/manifest">Recovery metadata</a>
+            {% endif %}
+          </td>
+        </tr>{% else %}<tr><td colspan="5" class="empty">No cached photo problems. Run Scan Library to check .HEIC originals.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </form>
+  {% if total_pages > 1 %}<div class="pager video-pager">
+    {% if page > 1 %}<a class="button secondary" href="{{ previous_url }}">Previous</a>{% endif %}
+    <span>Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="button secondary" href="{{ next_url }}">Next</a>{% endif %}
+  </div>{% endif %}
+</section>
+{% endblock %}

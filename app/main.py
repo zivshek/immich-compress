@@ -4,28 +4,30 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Form, Query, Request
-from fastapi import HTTPException
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import db, ios_problem_db
+from app import db, ios_problem_db, photo_problem_db
 from app.config import Settings, effective_settings, normalize_mode
 from app.immich import ImmichClient
-from app.ios_problem_scan import ios_problem_scanner
 from app.ios_problem_db import parse_json_list
+from app.ios_problem_scan import ios_problem_scanner
 from app.jobs import (
     IOS_REPAIR_JOB_KIND,
     job_queue,
     mark_processed,
-    reject_job as reject_work_job,
     upload_copy,
 )
+from app.jobs import (
+    reject_job as reject_work_job,
+)
+from app.photo_problems import photo_problem_worker
 from app.tools import tool_statuses
-
 
 app = FastAPI(title="Immich Compress")
 templates = Jinja2Templates(directory="app/templates")
@@ -232,6 +234,7 @@ def processing_is_configured() -> bool:
 def startup() -> None:
     db.init_db()
     ios_problem_db.init_db()
+    photo_problem_db.init_db()
     job_queue.start()
 
 
@@ -443,6 +446,82 @@ def videos_page(
         samesite="lax",
     )
     return response
+
+
+@app.get("/photo-problems")
+def photo_problems_page(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    status: str = Query(default=""),
+):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    statuses = ["problem", "scan-error", "repairing", "failed", "repaired"]
+    status = status if status in statuses else ""
+    total = photo_problem_db.count(status)
+    total_pages = max(1, (total + 24) // 25)
+    page = min(page, total_pages)
+    current = effective_settings()
+    return templates.TemplateResponse(request, "photo_problems.html", {
+        "rows": photo_problem_db.list_problems(25, (page - 1) * 25, status),
+        "worker": photo_problem_worker.snapshot(), "total": total,
+        "page": page, "total_pages": total_pages, "statuses": statuses,
+        "status_filter": status, "immich_web_base": immich_web_base_url(current),
+        "previous_url": "/photo-problems?" + urlencode({"page": page - 1, "status": status}),
+        "next_url": "/photo-problems?" + urlencode({"page": page + 1, "status": status}),
+    })
+
+
+@app.post("/photo-problems/scan")
+def scan_photo_problems():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    photo_problem_worker.start()
+    return RedirectResponse("/photo-problems", status_code=303)
+
+
+@app.post("/photo-problems/cancel")
+def cancel_photo_problems():
+    photo_problem_worker.cancel_event.set()
+    return RedirectResponse("/photo-problems", status_code=303)
+
+
+@app.post("/photo-problems/clear")
+def clear_photo_problems():
+    photo_problem_worker.clear()
+    return RedirectResponse("/photo-problems", status_code=303)
+
+
+@app.post("/photo-problems/repair-selected")
+def repair_selected_photo_problems(asset_ids: Annotated[list[str] | None, Form()] = None):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    photo_problem_worker.start(asset_ids or [])
+    return RedirectResponse("/photo-problems", status_code=303)
+
+
+@app.post("/photo-problems/repair-all")
+def repair_all_photo_problems():
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    photo_problem_worker.start(photo_problem_db.repairable_ids())
+    return RedirectResponse("/photo-problems", status_code=303)
+
+
+@app.get("/photo-problems/{asset_id}/backup/{kind}")
+def photo_problem_backup(asset_id: str, kind: str):
+    import json
+
+    row = photo_problem_db.get(asset_id)
+    if not row or not row["manifest"] or kind not in {"photo", "video", "manifest"}:
+        raise HTTPException(status_code=404, detail="Backup is not available")
+    files = json.loads(row["manifest"])["files"]
+    item = ({"path": str(Path(files["photo"]["path"]).parent / "manifest.json")}
+            if kind == "manifest" else files.get(kind))
+    if not item:
+        raise HTTPException(status_code=404, detail="Backup is not available")
+    path = safe_job_file(item["path"])
+    return FileResponse(path, filename=path.name)
 
 
 @app.get("/ios-problems")

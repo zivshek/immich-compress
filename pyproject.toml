@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A sidecar app for compressing and repairing existing Immich videos."
 requires-python = ">=3.11"
 dependencies = [
+  "pillow>=10.0.0",
   "fastapi>=0.111.0",
   "jinja2>=3.1.4",
   "python-multipart>=0.0.9",
@@ -16,6 +17,7 @@ immich-compress-import-manual = "app.manual_import:main"
 
 [project.optional-dependencies]
 dev = [
+  "httpx>=0.27.0",
   "ruff>=0.5.0",
 ]
 

@@ -21,6 +21,8 @@ This repo is an early scaffold. It can:
 - queue selected or all unprocessed videos without duplicate processing
 - scan the whole library for iOS-hostile video streams and cache findings separately
 - show cached problem videos on a dedicated iOS Problems page
+- scan .HEIC photos for JPEG content and repair extensions on a Photo Problems page
+- preserve Live Photo motion pairing with verified local backups and resumable replacement
 - transcode selected problem files to AV1 MP4 with the compression CRF, tone-mapped to SDR BT.709
 - send repaired files through the same review/accept replacement flow as compressed files
 - cancel individual jobs or cancel active work and clear the entire queue
@@ -142,6 +144,46 @@ successful repair.
 Repair quality follows the AV1 CRF setting from the Settings page (`VIDEO_CRF`, default 28); lower
 CRF values are larger and higher quality. Encoding is software-only (`libsvtav1`), so no GPU is
 required.
+
+## Photo extension repair
+
+Open **Photo Problems** and select **Scan Library** to check `.heic` image originals
+case-insensitively. The scan reads the original file signature through the API, using a small
+range request, and caches JPEG mismatches separately in `/data/immich-photo-problems.sqlite`.
+Real HEIC files are left alone. Unknown signatures and download failures appear as scan errors;
+run another scan to retry them. Reset Scan Cache clears detection results while retaining
+repair history and recovery state. This scans all photos independently of the video date cutoff.
+
+**Repair Selected / Retry** and **Repair All** perform replacement directly, regardless of the
+video review/auto setting. Repair All includes only fresh `problem` rows; select failed rows
+to resume them. A repair downloads the still and, for Live Photos, the separately linked original
+motion video. It verifies both against Immich's SHA-1 checksums and fully decodes the JPEG
+before changing the library. The corrected `.jpg` has identical bytes, including EXIF orientation.
+
+Renaming does not change the checksum, so Immich would reject an upload while the old photo
+exists, even in trash. After backups and metadata are saved, the app **permanently deletes the
+mislabeled photo** and re-uploads the JPEG. For Live Photos, it first detaches and verifies
+the motion link to prevent cascading deletion. It uploads the motion backup too; Immich normally
+returns the existing video as a duplicate, which is reused. The new JPEG is explicitly paired
+with that video and the pairing is verified. The app never explicitly deletes the motion video.
+
+Albums, favorites, tags, direct shared links, visibility/archive state, and supported date,
+description, rating, and location overrides are restored from the snapshot. Embedded metadata
+remains intact. Unstack photos before repairing them; external-library files must be repaired
+in their source folder. Face assignments, edit history, and separate XMP sidecar files are not
+transferred to the new asset. New asset IDs mean existing direct photo URLs will change.
+
+All original files, the renamed JPEG, and a readable `manifest.json` remain under
+`/data/photo-repair/<original-asset-id>/`, including after success. The page provides backup
+downloads. Keep `/data` on persistent storage with sufficient room for these copies. Failed
+repairs and interrupted repairs retain their saved stage and can resume after a restart without
+requiring the deleted original. Stop After Current Photo finishes an in-progress replacement
+before stopping the batch. A pending Immich deletion can temporarily reserve the old checksum;
+the app retries briefly, then retains the backup for a later retry.
+
+The API key needs asset search/read/download/upload/update/delete, album read/add-asset,
+shared-link read/update, and tag-asset permissions where tags are present. Missing read permissions
+stop backup preparation before deletion. Test a selected photo before running a large batch.
 
 ## Accepting reviewed files
 
