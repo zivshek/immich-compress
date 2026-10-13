@@ -1,10 +1,40 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 
 from app.jobs import IOS_REPAIR_JOB_KIND
 from app.main import enqueue_ios_repairs
+from app.photo_problems import photo_problem_view_asset_id
+
+
+class PhotoProblemLinksTest(unittest.TestCase):
+    def row(self, **values):
+        return {"asset_id": "original", "target_asset_id": None,
+                "manifest": None, "status": "problem", **values}
+
+    def test_unrepaired_photo_links_to_original(self):
+        self.assertEqual(photo_problem_view_asset_id(self.row()), "original")
+
+    def test_failed_replacement_never_links_to_deleted_original(self):
+        for stage in ("delete-requested", "deleted"):
+            with self.subTest(stage=stage):
+                row = self.row(status="failed", manifest=json.dumps({"stage": stage}))
+                self.assertIsNone(photo_problem_view_asset_id(row))
+
+    def test_recovers_uploaded_id_from_manifest_when_column_is_missing(self):
+        row = self.row(status="failed", manifest=json.dumps({
+            "stage": "uploaded", "target_id": "replacement",
+        }))
+        self.assertEqual(photo_problem_view_asset_id(row), "replacement")
+
+    def test_repair_in_progress_has_no_transient_link(self):
+        self.assertIsNone(photo_problem_view_asset_id(self.row(status="repairing")))
+
+    def test_completed_repair_links_to_replacement(self):
+        row = self.row(status="repaired", target_asset_id="replacement")
+        self.assertEqual(photo_problem_view_asset_id(row), "replacement")
 
 
 class MainHelpersTest(unittest.TestCase):

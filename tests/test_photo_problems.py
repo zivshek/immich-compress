@@ -238,8 +238,14 @@ class PhotoRepairTest(unittest.TestCase):
         self.assertIsNotNone(store.get("photo-1")["manifest"])
         self.assertIsNone(store.get("clean-1"))
 
-    def test_scanner_checks_only_heic_and_caches_real_heic(self):
+    def test_scanner_refreshes_problem_details_and_caches_real_heic(self):
         client = FakeImmich(self.directory)
+        client.assets["heic-1"] = {
+            "id": "heic-1",
+            "originalFileName": "real.heic",
+            "type": "IMAGE",
+            "livePhotoVideoId": None,
+        }
         client.search_photos = lambda page: [
             client.asset,
             {"id": "heic-1", "originalFileName": "real.heic"},
@@ -255,10 +261,52 @@ class PhotoRepairTest(unittest.TestCase):
         worker = PhotoProblemWorker()
         worker._scan(client)
         worker._scan(client)
-        self.assertEqual(calls, ["photo-1", "heic-1"])
+        self.assertEqual(calls, ["photo-1", "heic-1", "photo-1"])
         self.assertEqual(store.get("photo-1")["status"], "problem")
         self.assertEqual(store.get("heic-1")["status"], "clean")
         self.assertEqual(store.count(), 1)
+
+    def test_scan_uses_full_pairing_and_removes_stale_id_with_same_filename(self):
+        client = FakeImmich(self.directory, live=True)
+        store.record(
+            {"id": "stale-id", "originalFileName": client.asset["originalFileName"]}, "problem"
+        )
+        abbreviated = {
+            key: value for key, value in client.asset.items() if key != "livePhotoVideoId"
+        }
+        client.search_photos = lambda page: [abbreviated]
+        client.original_header = lambda asset_id: client.photo_bytes[:64]
+        worker = PhotoProblemWorker()
+        worker._scan(client)
+        row = store.get("photo-1")
+        self.assertEqual(row["live_photo_video_id"], "video-1")
+        self.assertEqual(row["live_photo_verified"], 1)
+        self.assertIsNone(store.get("stale-id"))
+        self.assertEqual(row["source_server"], "http://test")
+
+    def test_rescan_refreshes_live_photo_flag_in_existing_row(self):
+        client = FakeImmich(self.directory, live=True)
+        store.record({**client.asset, "livePhotoVideoId": None}, "problem")
+        client.search_photos = lambda page: [client.asset]
+        client.original_header = lambda asset_id: client.photo_bytes[:64]
+        PhotoProblemWorker()._scan(client)
+        self.assertEqual(store.get("photo-1")["live_photo_video_id"], "video-1")
+
+    def test_unreadable_search_record_is_not_repairable(self):
+        client = FakeImmich(self.directory)
+        client.search_photos = lambda page: [{"id": "missing-id", "originalFileName": "a.HEIC"}]
+        PhotoProblemWorker()._scan(client)
+        row = store.get("missing-id")
+        self.assertEqual(row["status"], "scan-error")
+        self.assertEqual(row["live_photo_verified"], 0)
+        self.assertEqual(store.repairable_ids(), [])
+
+    def test_cancelled_scan_keeps_unseen_cached_rows(self):
+        store.record({"id": "cached", "originalFileName": "a.HEIC"}, "problem")
+        worker = PhotoProblemWorker()
+        worker.cancel_event.set()
+        worker._scan(FakeImmich(self.directory))
+        self.assertIsNotNone(store.get("cached"))
 
     def test_filename_and_jpeg_validation(self):
         self.assertEqual(safe_name("../../IMG_4879.HEIC"), "IMG_4879.HEIC")

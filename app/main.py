@@ -26,7 +26,7 @@ from app.jobs import (
 from app.jobs import (
     reject_job as reject_work_job,
 )
-from app.photo_problems import photo_problem_worker
+from app.photo_problems import photo_problem_view_asset_id, photo_problem_worker
 from app.tools import tool_statuses
 
 app = FastAPI(title="Immich Compress")
@@ -462,8 +462,22 @@ def photo_problems_page(
     total_pages = max(1, (total + 24) // 25)
     page = min(page, total_pages)
     current = effective_settings()
+    rows = [
+        {
+            **dict(row),
+            "view_asset_id": (
+                None if row["source_server"]
+                and row["source_server"] != current.immich_url.rstrip("/")
+                else photo_problem_view_asset_id(row)
+            ),
+            "connection_mismatch": bool(
+                row["source_server"] and row["source_server"] != current.immich_url.rstrip("/")
+            ),
+        }
+        for row in photo_problem_db.list_problems(25, (page - 1) * 25, status)
+    ]
     return templates.TemplateResponse(request, "photo_problems.html", {
-        "rows": photo_problem_db.list_problems(25, (page - 1) * 25, status),
+        "rows": rows,
         "worker": photo_problem_worker.snapshot(), "total": total,
         "page": page, "total_pages": total_pages, "statuses": statuses,
         "status_filter": status, "immich_web_base": immich_web_base_url(current),

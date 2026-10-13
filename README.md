@@ -153,6 +153,10 @@ range request, and caches JPEG mismatches separately in `/data/immich-photo-prob
 Real HEIC files are left alone. Unknown signatures and download failures appear as scan errors;
 run another scan to retry them. Reset Scan Cache clears detection results while retaining
 repair history and recovery state. This scans all photos independently of the video date cutoff.
+Problem rows are revalidated against full asset details on every scan, including Live Photo
+pairing. A completed scan removes stale detection rows for assets no longer in the library,
+while preserving replacement history and recovery backups. Old cache entries with unverified
+pairing display Unknown until rescanned. Repair entries cannot be used against another API URL.
 
 **Repair Selected / Retry** and **Repair All** perform replacement directly, regardless of the
 video review/auto setting. Repair All includes only fresh `problem` rows; select failed rows

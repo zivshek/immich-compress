@@ -42,17 +42,31 @@ def init_db() -> None:
             error='Interrupted by restart. Retry to resume using the saved backup.'
             WHERE status IN ('queued', 'repairing')
         """)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(photo_problems)")}
+        if "source_server" not in columns:
+            connection.execute("ALTER TABLE photo_problems ADD COLUMN source_server TEXT")
+        if "live_photo_verified" not in columns:
+            connection.execute(
+                "ALTER TABLE photo_problems ADD COLUMN live_photo_verified INTEGER NOT NULL DEFAULT 0"
+            )
 
 
-def record(asset: dict, status: str, error: str | None = None) -> None:
+def record(
+    asset: dict, status: str, error: str | None = None, *, server: str | None = None
+) -> None:
     with connect() as connection:
         connection.execute(
             """
             INSERT INTO photo_problems
-            (asset_id, original_file_name, live_photo_video_id, status, error, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (asset_id, original_file_name, live_photo_video_id, status, error, updated_at,
+             source_server, live_photo_verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET status=excluded.status,
-                error=excluded.error, updated_at=excluded.updated_at
+                error=excluded.error, updated_at=excluded.updated_at,
+                original_file_name=excluded.original_file_name,
+                live_photo_video_id=excluded.live_photo_video_id,
+                source_server=excluded.source_server,
+                live_photo_verified=excluded.live_photo_verified
         """,
             (
                 asset["id"],
@@ -61,12 +75,30 @@ def record(asset: dict, status: str, error: str | None = None) -> None:
                 status,
                 error,
                 utc_now(),
+                server,
+                int("livePhotoVideoId" in asset),
             ),
         )
 
 
+def finish_scan(seen_ids: set[str]) -> None:
+    """Drop stale detection rows only after a complete, successful library enumeration."""
+    with connect() as connection:
+        rows = connection.execute(
+            "SELECT asset_id FROM photo_problems WHERE manifest IS NULL "
+            "AND status IN ('problem', 'clean', 'scan-error', 'failed')"
+        ).fetchall()
+        connection.executemany(
+            "DELETE FROM photo_problems WHERE asset_id=?",
+            [(row[0],) for row in rows if row[0] not in seen_ids],
+        )
+
+
 def update(asset_id: str, **values) -> None:
-    allowed = {"status", "error", "target_asset_id", "manifest"}
+    allowed = {
+        "status", "error", "target_asset_id", "manifest",
+        "original_file_name", "live_photo_video_id", "live_photo_verified",
+    }
     if not values or not set(values) <= allowed:
         raise ValueError("Invalid photo problem fields")
     values["updated_at"] = utc_now()
@@ -99,7 +131,7 @@ def save_manifest(asset_id: str, manifest: dict) -> None:
         file.flush()
         os.fsync(file.fileno())
     temporary.replace(directory / "manifest.json")
-    update(asset_id, manifest=serialized)
+    update(asset_id, manifest=serialized, target_asset_id=manifest.get("target_id"))
 
 
 def list_problems(limit: int = 25, offset: int = 0, status: str = ""):

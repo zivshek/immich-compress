@@ -5,6 +5,7 @@
   <div>
     <h1>Photo Problems</h1>
     <p class="subtle">Find JPEG photos mislabeled as .HEIC and restore correct display without recompression.</p>
+    <p class="subtle">Immich links use your browser login. Sign in to the account that owns these photos.</p>
   </div>
   <span class="state">{{ total }} cached</span>
 </section>
@@ -50,9 +51,16 @@
       </tr></thead>
       <tbody>
         {% for row in rows %}<tr>
-          <td><input type="checkbox" name="asset_ids" aria-label="Select {{ row.original_file_name }}" value="{{ row.asset_id }}" {% if row.status not in ['problem', 'failed'] or worker.running %}disabled{% endif %}></td>
-          <td><a class="filename" href="{{ immich_web_base }}/photos/{{ row.target_asset_id or row.asset_id }}" target="_blank" rel="noreferrer">{{ row.original_file_name }}</a></td>
-          <td>{{ 'Yes' if row.live_photo_video_id else 'No' }}</td>
+          <td><input type="checkbox" name="asset_ids" aria-label="Select {{ row.original_file_name }}" value="{{ row.asset_id }}" {% if row.status not in ['problem', 'failed'] or worker.running or row.connection_mismatch %}disabled{% endif %}></td>
+          <td>
+            {% if row.view_asset_id %}
+            <a class="filename" href="{{ immich_web_base }}/photos/{{ row.view_asset_id }}" target="_blank" rel="noreferrer">{{ row.original_file_name }}</a>
+            {% else %}
+            <span class="filename">{{ row.original_file_name }}</span>
+            <small>{% if row.connection_mismatch %}API connection changed; scan again{% elif row.status == 'scan-error' %}Asset verification failed; scan again{% elif row.status == 'repairing' %}Replacement in progress{% else %}Original removed; retry replacement or use the backup below{% endif %}</small>
+            {% endif %}
+          </td>
+          <td>{{ 'Unknown — scan again' if not row.live_photo_verified else ('Yes' if row.live_photo_video_id else 'No') }}</td>
           <td><span class="state state-{{ row.status }}">{{ row.status }}</span></td>
           <td>
             {% if row.error %}<small class="error">{{ row.error }}</small>{% endif %}

@@ -22,6 +22,24 @@ def is_jpeg(header: bytes) -> bool:
     return header.startswith(b"\xff\xd8\xff")
 
 
+def photo_problem_view_asset_id(row) -> str | None:
+    """Only link an original while the repair record says it can still exist."""
+    if row["status"] in {"repairing", "scan-error"}:
+        return None
+    if row["target_asset_id"]:
+        return row["target_asset_id"]
+    if row["manifest"]:
+        try:
+            manifest = json.loads(row["manifest"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if manifest.get("target_id"):
+            return manifest["target_id"]
+        if manifest.get("stage") != "prepared":
+            return None
+    return row["asset_id"]
+
+
 def safe_name(value: str) -> str:
     # Handle both POSIX and Windows paths, regardless of the deployment OS.
     name = value.replace("\\", "/").split("/")[-1]
@@ -86,6 +104,16 @@ def metadata_values(asset: dict) -> dict:
 
 def prepare_backup(client: ImmichClient, asset_id: str) -> dict:
     asset = client.find_asset_by_id(asset_id)
+    if "livePhotoVideoId" not in asset:
+        raise RuntimeError("Cannot verify Live Photo pairing; original was not changed")
+    if asset.get("id") != asset_id or asset.get("type") != "IMAGE":
+        raise RuntimeError("Asset identity does not match the photo selected for repair")
+    store.update(
+        asset_id,
+        original_file_name=asset.get("originalFileName") or asset_id,
+        live_photo_video_id=asset["livePhotoVideoId"],
+        live_photo_verified=1,
+    )
     if asset.get("isExternal"):
         raise RuntimeError("External-library originals must be repaired in their source library")
     if asset.get("isTrashed"):
@@ -182,6 +210,8 @@ def repair_photo(client: ImmichClient, asset_id: str) -> None:
     row = store.get(asset_id)
     if not row or row["status"] == "repaired":
         return
+    if row["source_server"] and row["source_server"] != client.config.immich_url.rstrip("/"):
+        raise RuntimeError("This entry belongs to another API connection. Scan Library again.")
     manifest = json.loads(row["manifest"]) if row["manifest"] else prepare_backup(client, asset_id)
     validate_backup(client, asset_id, manifest)
     store.save_manifest(asset_id, manifest)
@@ -345,6 +375,8 @@ class PhotoProblemWorker:
 
     def _scan(self, client: ImmichClient):
         page = 1
+        seen_ids: set[str] = set()
+        server = client.config.immich_url.rstrip("/")
         while not self.cancel_event.is_set():
             assets = client.search_photos(page=page)
             if not assets:
@@ -356,30 +388,45 @@ class PhotoProblemWorker:
                     continue
                 if Path(asset.get("originalFileName") or "").suffix.lower() != ".heic":
                     continue
+                seen_ids.add(asset["id"])
                 row = store.get(asset["id"])
-                if row and row["status"] != "scan-error":
+                if row and (row["manifest"] or row["status"] in {"repairing", "repaired"}):
+                    continue
+                if row and row["status"] == "clean" and row["source_server"] == server:
                     continue
                 self._set(current_file=asset.get("originalFileName") or asset["id"])
                 try:
+                    detail = client.find_asset_by_id(asset["id"])
+                    if detail.get("id") != asset["id"] or detail.get("type") != "IMAGE":
+                        raise RuntimeError("Search record does not match the image asset details")
+                    asset = detail
+                    if asset.get("isTrashed"):
+                        raise RuntimeError("Asset is now in trash; reset or refresh the scan")
+                    if "livePhotoVideoId" not in asset:
+                        raise RuntimeError(
+                            "Asset details omit Live Photo pairing; repair unavailable"
+                        )
                     header = client.original_header(asset["id"])
                     if not header:
                         raise RuntimeError("Empty original response")
                     if is_jpeg(header):
-                        store.record(asset, "problem")
+                        store.record(asset, "problem", server=server)
                         self._set(found=self.found + 1)
                     elif len(header) >= 12 and header[4:8] == b"ftyp":
-                        store.record(asset, "clean")
+                        store.record(asset, "clean", server=server)
                     else:
                         raise RuntimeError(
                             "Unknown file signature; automatic JPEG repair unavailable"
                         )
                 except Exception as exc:  # noqa: BLE001 -- one bad asset must not abort the scan
-                    store.record(asset, "scan-error", str(exc))
+                    store.record(asset, "scan-error", str(exc), server=server)
                     self._set(last_error=str(exc))
                 self._set(scanned=self.scanned + 1)
             if len(assets) < 100:
                 break
             page += 1
+        if not self.cancel_event.is_set():
+            store.finish_scan(seen_ids)
 
 
 photo_problem_worker = PhotoProblemWorker()
