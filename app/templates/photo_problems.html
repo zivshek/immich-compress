@@ -32,17 +32,21 @@
 <section>
   <div class="toolbar jobs-toolbar">
     <form method="get" action="/photo-problems" class="inline-form">
+      <input type="search" name="search" value="{{ search }}" placeholder="Filename or asset ID" aria-label="Search photo results by filename or asset ID">
       <select name="status" aria-label="Filter photo problems">
         <option value="">All statuses</option>
         {% for status in statuses %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
       </select>
       <button>Filter</button>
+      {% if search or status_filter %}<a href="/photo-problems">Clear filters</a>{% endif %}
     </form>
   </div>
   <form method="post" action="/photo-problems/repair-selected">
+    <input type="hidden" name="search" value="{{ search }}">
+    <input type="hidden" name="status" value="{{ status_filter }}">
     <div class="toolbar video-actions">
       <button {% if worker.running %}disabled{% endif %} onclick="return confirm('Replace selected photos? Verified local backups will be retained. Originals are permanently deleted so the renamed JPEGs can be re-uploaded.')">Repair Selected / Retry</button>
-      <button class="warning-button" formaction="/photo-problems/repair-all" {% if worker.running %}disabled{% endif %} onclick="return confirm('Replace all photos in the problem state? Verified local backups will be retained. Originals are permanently deleted before re-upload.')">Repair All</button>
+      <button class="warning-button" formaction="/photo-problems/repair-all" {% if worker.running %}disabled{% endif %} onclick="return confirm('Replace ALL cached photos in the problem state, including those outside the current search filters? Verified local backups will be retained. Originals are permanently deleted before re-upload.')">Repair All Problems</button>
     </div>
     <div class="table-wrap"><table>
       <thead><tr>
@@ -54,15 +58,19 @@
           <td><input type="checkbox" name="asset_ids" aria-label="Select {{ row.original_file_name }}" value="{{ row.asset_id }}" {% if row.status not in ['problem', 'failed'] or worker.running or row.connection_mismatch %}disabled{% endif %}></td>
           <td>
             {% if row.view_asset_id %}
-            <a class="filename" href="{{ immich_web_base }}/photos/{{ row.view_asset_id }}" target="_blank" rel="noreferrer">{{ row.original_file_name }}</a>
+            <a class="filename" href="{{ immich_web_base }}/photos/{{ row.view_asset_id }}" target="_blank" rel="noreferrer">{{ row.display_file_name }}</a>
+            {% if row.view_asset_id != row.asset_id %}<small>Replaced {{ row.original_file_name }}</small>{% endif %}
+            <small>Asset ID: {{ row.view_asset_id }}</small>
             {% else %}
-            <span class="filename">{{ row.original_file_name }}</span>
+            <span class="filename">{{ row.display_file_name }}</span>
             <small>{% if row.connection_mismatch %}API connection changed; scan again{% elif row.status == 'scan-error' %}Asset verification failed; scan again{% elif row.status == 'repairing' %}Replacement in progress{% else %}Original removed; retry replacement or use the backup below{% endif %}</small>
             {% endif %}
           </td>
           <td>{{ 'Unknown — scan again' if not row.live_photo_verified else ('Yes' if row.live_photo_video_id else 'No') }}</td>
           <td><span class="state state-{{ row.status }}">{{ row.status }}</span></td>
           <td>
+            <small>Repair stage: {{ row.repair_stage }}</small>
+            <a href="/photo-problems/{{ row.asset_id }}/diagnostics" target="_blank" rel="noreferrer">Inspect Immich records</a>
             {% if row.error %}<small class="error">{{ row.error }}</small>{% endif %}
             {% if row.status == 'problem' %}<small>JPEG content with .HEIC filename</small>{% endif %}
             {% if row.manifest %}
@@ -71,7 +79,7 @@
             · <a href="/photo-problems/{{ row.asset_id }}/backup/manifest">Recovery metadata</a>
             {% endif %}
           </td>
-        </tr>{% else %}<tr><td colspan="5" class="empty">No cached photo problems. Run Scan Library to check .HEIC originals.</td></tr>{% endfor %}
+        </tr>{% else %}<tr><td colspan="5" class="empty">{% if search or status_filter %}No photo problems match these filters.{% else %}No cached photo problems. Run Scan Library to check .HEIC originals.{% endif %}</td></tr>{% endfor %}
       </tbody>
     </table></div>
   </form>

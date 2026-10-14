@@ -17,6 +17,8 @@ from app import photo_problem_db as store
 from app.config import settings
 from app.photo_problems import (
     PhotoProblemWorker,
+    diagnose_photo,
+    photo_problem_presentation,
     repair_photo,
     safe_name,
     upload_photo,
@@ -126,6 +128,16 @@ class FakeImmich:
     def add_asset_to_album(self, asset_id, album_id):
         self.events.append(("album", asset_id, album_id))
 
+    def original_header(self, asset_id):
+        return self.photo_bytes[:64]
+
+    def search_assets_by_stem(self, stem, size=100):
+        return [
+            asset.copy()
+            for asset in self.assets.values()
+            if Path(asset["originalFileName"]).stem == stem
+        ]
+
 
 class PhotoRepairTest(unittest.TestCase):
     def setUp(self):
@@ -142,6 +154,60 @@ class PhotoRepairTest(unittest.TestCase):
     def repair(self, client):
         store.record(client.asset, "problem")
         repair_photo(client, "photo-1")
+
+    def test_search_returns_same_name_records_and_combines_with_status(self):
+        for asset_id, status in (("source-one", "problem"), ("source-two", "repaired")):
+            store.record({"id": asset_id, "originalFileName": "IMG_7831.HEIC"}, status)
+        store.record({"id": "other", "originalFileName": "IMG_9999.HEIC"}, "problem")
+        self.assertEqual(store.count(search=" img_7831 "), 2)
+        self.assertEqual(store.count("problem", "IMG_7831"), 1)
+        self.assertEqual(len(store.list_problems(search="IMG_7831")), 2)
+        self.assertEqual(len(store.list_problems(1, 1, search="IMG_7831")), 1)
+        self.assertEqual(store.count(search="source-two"), 1)
+        self.assertEqual(store.count(search="%"), 0)
+
+    def test_search_matches_replacement_filename_and_id(self):
+        store.record({"id": "original", "originalFileName": "IMG_7831.HEIC"}, "repaired")
+        store.update(
+            "original",
+            target_asset_id="replacement-uuid",
+            manifest=json.dumps(
+                {
+                    "files": {"photo": {"path": "/data/photo-repair/original/IMG_7831.jpg"}},
+                }
+            ),
+        )
+        self.assertEqual(store.count(search="IMG_7831.jpg"), 1)
+        self.assertEqual(store.count(search="replacement-uuid"), 1)
+
+    def test_search_page_preserves_query_in_pagination(self):
+        from starlette.requests import Request
+
+        from app.main import photo_problems_page
+
+        for index in range(26):
+            store.record({"id": f"photo-{index}", "originalFileName": "IMG_7831.HEIC"}, "problem")
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/photo-problems",
+                "headers": [],
+                "query_string": b"",
+            }
+        )
+        with (
+            patch("app.main.processing_is_configured", return_value=True),
+            patch(
+                "app.main.effective_settings",
+                return_value=FakeImmich(self.directory).config,
+            ),
+        ):
+            response = photo_problems_page(request, page=1, status="problem", search="IMG_7831")
+        html = response.body.decode()
+        self.assertIn('value="IMG_7831"', html)
+        self.assertIn("page=2&amp;status=problem&amp;search=IMG_7831", html)
+        self.assertIn("26 cached", html)
 
     def test_still_repair_preserves_bytes_orientation_and_metadata(self):
         client = FakeImmich(self.directory)
@@ -161,6 +227,56 @@ class PhotoRepairTest(unittest.TestCase):
             any(event[:2] == ("PUT", "shared-links/link-1/assets") for event in client.events)
         )
         self.assertTrue(any(event[:2] == ("PUT", "tags/tag-1/assets") for event in client.events))
+
+    def test_completed_row_displays_jpeg_name_and_diagnostics_match_replacement(self):
+        client = FakeImmich(self.directory)
+        self.repair(client)
+        row = store.get("photo-1")
+        presentation = photo_problem_presentation(row)
+        self.assertEqual(presentation["display_file_name"], "IMG_4879.jpg")
+        self.assertEqual(presentation["repair_stage"], "complete")
+        report = diagnose_photo(client, row)
+        self.assertEqual(report["replacementId"], "photo-new")
+        records = {record["requestedId"]: record for record in report["records"]}
+        self.assertEqual(records["photo-1"]["httpStatus"], 404)
+        self.assertEqual(records["photo-new"]["actualFormat"], "JPEG")
+        self.assertTrue(records["photo-new"]["matchesBackupBytes"])
+
+    def test_diagnostics_distinguishes_same_name_with_different_bytes_and_pairing(self):
+        client = FakeImmich(self.directory)
+        self.repair(client)
+        client.assets["other-photo"] = {
+            **client.asset,
+            "id": "other-photo",
+            "checksum": checksum(b"different bytes"),
+            "livePhotoVideoId": "other-motion",
+        }
+        report = diagnose_photo(client, store.get("photo-1"), "other-photo")
+        record = next(item for item in report["records"] if item["requestedId"] == "other-photo")
+        self.assertFalse(record["matchesBackupBytes"])
+        self.assertEqual(record["livePhotoVideoId"], "other-motion")
+        self.assertNotIn("immich_api_key", json.dumps(report))
+
+    def test_final_verification_rejects_unchanged_original(self):
+        client = FakeImmich(self.directory)
+        client.delete_asset_permanently = lambda asset_id: None
+        with self.assertRaisesRegex(RuntimeError, "Original is still active"):
+            self.repair(client)
+        self.assertNotEqual(store.get("photo-1")["status"], "repaired")
+
+    def test_final_verification_rejects_replacement_renamed_back_to_heic(self):
+        client = FakeImmich(self.directory)
+        original_update = client.update_asset
+
+        def update(asset_id, values):
+            original_update(asset_id, values)
+            if asset_id == "photo-new":
+                client.assets[asset_id]["originalFileName"] = "IMG_4879.HEIC"
+
+        client.update_asset = update
+        with self.assertRaisesRegex(RuntimeError, "wrong extension"):
+            self.repair(client)
+        self.assertNotEqual(store.get("photo-1")["status"], "repaired")
 
     def test_live_photo_downloads_both_before_deletion_and_detaches_motion(self):
         client = FakeImmich(self.directory, live=True)

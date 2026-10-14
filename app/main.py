@@ -26,7 +26,12 @@ from app.jobs import (
 from app.jobs import (
     reject_job as reject_work_job,
 )
-from app.photo_problems import photo_problem_view_asset_id, photo_problem_worker
+from app.photo_problems import (
+    diagnose_photo,
+    photo_problem_presentation,
+    photo_problem_view_asset_id,
+    photo_problem_worker,
+)
 from app.tools import tool_statuses
 
 app = FastAPI(title="Immich Compress")
@@ -453,18 +458,20 @@ def photo_problems_page(
     request: Request,
     page: int = Query(default=1, ge=1),
     status: str = Query(default=""),
+    search: str = "",
 ):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
     statuses = ["problem", "scan-error", "repairing", "failed", "repaired"]
     status = status if status in statuses else ""
-    total = photo_problem_db.count(status)
+    search = search.strip()
+    total = photo_problem_db.count(status, search)
     total_pages = max(1, (total + 24) // 25)
     page = min(page, total_pages)
     current = effective_settings()
     rows = [
         {
-            **dict(row),
+            **photo_problem_presentation(row),
             "view_asset_id": (
                 None if row["source_server"]
                 and row["source_server"] != current.immich_url.rstrip("/")
@@ -474,15 +481,16 @@ def photo_problems_page(
                 row["source_server"] and row["source_server"] != current.immich_url.rstrip("/")
             ),
         }
-        for row in photo_problem_db.list_problems(25, (page - 1) * 25, status)
+        for row in photo_problem_db.list_problems(25, (page - 1) * 25, status, search)
     ]
     return templates.TemplateResponse(request, "photo_problems.html", {
         "rows": rows,
         "worker": photo_problem_worker.snapshot(), "total": total,
         "page": page, "total_pages": total_pages, "statuses": statuses,
         "status_filter": status, "immich_web_base": immich_web_base_url(current),
-        "previous_url": "/photo-problems?" + urlencode({"page": page - 1, "status": status}),
-        "next_url": "/photo-problems?" + urlencode({"page": page + 1, "status": status}),
+        "search": search,
+        "previous_url": "/photo-problems?" + urlencode({"page": page - 1, "status": status, "search": search}),
+        "next_url": "/photo-problems?" + urlencode({"page": page + 1, "status": status, "search": search}),
     })
 
 
@@ -507,19 +515,30 @@ def clear_photo_problems():
 
 
 @app.post("/photo-problems/repair-selected")
-def repair_selected_photo_problems(asset_ids: Annotated[list[str] | None, Form()] = None):
+def repair_selected_photo_problems(
+    asset_ids: Annotated[list[str] | None, Form()] = None,
+    search: Annotated[str, Form()] = "",
+    status: Annotated[str, Form()] = "",
+):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
     photo_problem_worker.start(asset_ids or [])
-    return RedirectResponse("/photo-problems", status_code=303)
+    return RedirectResponse(
+        "/photo-problems?" + urlencode({"search": search.strip(), "status": status}), status_code=303,
+    )
 
 
 @app.post("/photo-problems/repair-all")
-def repair_all_photo_problems():
+def repair_all_photo_problems(
+    search: Annotated[str, Form()] = "",
+    status: Annotated[str, Form()] = "",
+):
     if not processing_is_configured():
         return RedirectResponse("/settings", status_code=303)
     photo_problem_worker.start(photo_problem_db.repairable_ids())
-    return RedirectResponse("/photo-problems", status_code=303)
+    return RedirectResponse(
+        "/photo-problems?" + urlencode({"search": search.strip(), "status": status}), status_code=303,
+    )
 
 
 @app.get("/photo-problems/{asset_id}/backup/{kind}")
@@ -536,6 +555,19 @@ def photo_problem_backup(asset_id: str, kind: str):
         raise HTTPException(status_code=404, detail="Backup is not available")
     path = safe_job_file(item["path"])
     return FileResponse(path, filename=path.name)
+
+
+@app.get("/photo-problems/{asset_id}/diagnostics")
+def photo_problem_diagnostics(asset_id: str, compare: str = ""):
+    if not processing_is_configured():
+        return RedirectResponse("/settings", status_code=303)
+    row = photo_problem_db.get(asset_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo problem entry not found")
+    try:
+        return diagnose_photo(ImmichClient(), row, compare or None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/ios-problems")

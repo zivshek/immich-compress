@@ -40,6 +40,91 @@ def photo_problem_view_asset_id(row) -> str | None:
     return row["asset_id"]
 
 
+def photo_problem_presentation(row) -> dict:
+    result = dict(row)
+    manifest = json.loads(row["manifest"]) if row["manifest"] else {}
+    result["repair_stage"] = manifest.get("stage", "Not started")
+    result["display_file_name"] = row["original_file_name"]
+    if manifest.get("target_id") or row["target_asset_id"]:
+        photo = manifest.get("files", {}).get("photo", {})
+        if photo.get("path"):
+            result["display_file_name"] = safe_name(photo["path"])
+    return result
+
+
+def diagnose_photo(client: ImmichClient, row, compare_id: str | None = None) -> dict:
+    """Read server records without exposing credentials or changing the library."""
+    manifest = json.loads(row["manifest"]) if row["manifest"] else {}
+    checksum = (manifest.get("asset") or {}).get("checksum")
+    target_id = row["target_asset_id"] or manifest.get("target_id")
+
+    def inspect(asset_id: str) -> dict:
+        try:
+            asset = client.find_asset_by_id(asset_id)
+            keys = (
+                "id",
+                "originalFileName",
+                "ownerId",
+                "checksum",
+                "type",
+                "livePhotoVideoId",
+                "isTrashed",
+                "visibility",
+                "fileCreatedAt",
+            )
+            result = {key: asset.get(key) for key in keys}
+            result["requestedId"] = asset_id
+            result["idMatchesRequest"] = asset.get("id") == asset_id
+            result["ownerName"] = (asset.get("owner") or {}).get("name")
+            result["matchesBackupBytes"] = asset.get("checksum") == checksum if checksum else None
+            header = client.original_header(asset_id)
+            result["actualFormat"] = (
+                "JPEG"
+                if is_jpeg(header)
+                else "ISO-BMFF/HEIF"
+                if header[4:8] == b"ftyp"
+                else "Unknown"
+            )
+            return result
+        except (requests.RequestException, RuntimeError) as exc:
+            response = getattr(exc, "response", None)
+            return {
+                "requestedId": asset_id,
+                "error": str(exc),
+                "httpStatus": response.status_code if response is not None else None,
+            }
+
+    ids = [row["asset_id"]]
+    if target_id:
+        ids.append(target_id)
+    if compare_id:
+        if not re.fullmatch(r"[a-zA-Z0-9-]+", compare_id):
+            raise ValueError("Invalid comparison asset ID")
+        ids.append(compare_id)
+    search_error = None
+    try:
+        stem = Path(row["original_file_name"]).stem
+        candidates = client.search_assets_by_stem(stem, size=100)
+        ids.extend(
+            item["id"]
+            for item in candidates
+            if Path(item.get("originalFileName") or "").stem.casefold() == stem.casefold()
+        )
+    except (requests.RequestException, RuntimeError) as exc:
+        search_error = str(exc)
+    return {
+        "apiServer": client.config.immich_url,
+        "webServer": client.config.immich_web_url or client.config.immich_url,
+        "cachedSourceId": row["asset_id"],
+        "replacementId": target_id,
+        "status": row["status"],
+        "error": row["error"],
+        "repairStage": manifest.get("stage", "Not started"),
+        "searchError": search_error,
+        "records": [inspect(asset_id) for asset_id in list(dict.fromkeys(ids))[:20]],
+    }
+
+
 def safe_name(value: str) -> str:
     # Handle both POSIX and Windows paths, regardless of the deployment OS.
     name = value.replace("\\", "/").split("/")[-1]
@@ -285,8 +370,24 @@ def repair_photo(client: ImmichClient, asset_id: str) -> None:
             )
         )
     restored = client.find_asset_by_id(target_id)
+    if restored.get("id") != target_id or target_id == asset_id:
+        raise RuntimeError("Replacement asset ID verification failed; backup retained")
+    if Path(restored.get("originalFileName") or "").suffix.lower() not in {".jpg", ".jpeg"}:
+        raise RuntimeError("Replacement still has the wrong extension; backup retained")
+    if restored.get("checksum") != asset["checksum"] or restored.get("isTrashed"):
+        raise RuntimeError(
+            "Replacement content or availability verification failed; backup retained"
+        )
     if restored.get("livePhotoVideoId") != manifest.get("video_target_id"):
         raise RuntimeError("Live Photo pairing verification failed; backup retained")
+    try:
+        original = client.find_asset_by_id(asset_id)
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code not in {400, 404}:
+            raise
+    else:
+        if not original.get("isTrashed"):
+            raise RuntimeError("Original is still active in Immich; replacement is not complete")
     manifest["stage"] = "complete"
     store.save_manifest(asset_id, manifest)
     store.update(asset_id, status="repaired", target_asset_id=target_id, error=None)

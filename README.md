@@ -189,6 +189,19 @@ The API key needs asset search/read/download/upload/update/delete, album read/ad
 shared-link read/update, and tag-asset permissions where tags are present. Missing read permissions
 stop backup preparation before deletion. Test a selected photo before running a large batch.
 
+Completed rows display the replacement JPEG filename and asset ID, with the old filename below.
+The results search accepts partial filenames or original/replacement asset IDs, ignores case,
+and combines with the status filter. It searches the full cached results, with filters preserved
+across pagination and repair actions. Repair All Problems still includes all cached problem rows,
+including those outside the search filters; Repair Selected applies only to checked rows.
+Backup downloads alone do not indicate success: check the row status, repair stage, and error.
+**Inspect Immich records** compares the cached source and replacement with other records sharing
+the filename stem, including their IDs, checksums, owner, actual file signature, and Live Photo
+pairing. It is read-only and omits API keys and GPS metadata. To compare a specific browser asset,
+append `?compare=<asset-id>` to the diagnostics URL. A different ID with the same filename is
+not automatically substituted or deleted. Final repair verification checks that the JPEG is
+available with the expected checksum and pairing and that the original is no longer active.
+
 ## Accepting reviewed files
 
 The app does not modify the downloaded working copy under `/data/work/<asset-id>/`. That file is only a temporary local copy used for encoding and review.

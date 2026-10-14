@@ -96,8 +96,13 @@ def finish_scan(seen_ids: set[str]) -> None:
 
 def update(asset_id: str, **values) -> None:
     allowed = {
-        "status", "error", "target_asset_id", "manifest",
-        "original_file_name", "live_photo_video_id", "live_photo_verified",
+        "status",
+        "error",
+        "target_asset_id",
+        "manifest",
+        "original_file_name",
+        "live_photo_video_id",
+        "live_photo_verified",
     }
     if not values or not set(values) <= allowed:
         raise ValueError("Invalid photo problem fields")
@@ -134,9 +139,23 @@ def save_manifest(asset_id: str, manifest: dict) -> None:
     update(asset_id, manifest=serialized, target_asset_id=manifest.get("target_id"))
 
 
-def list_problems(limit: int = 25, offset: int = 0, status: str = ""):
+def result_filter(status: str = "", search: str = "") -> tuple[str, list[str]]:
     where = "status=?" if status else "status!='clean'"
     params = [status] if status else []
+    if search.strip():
+        where += """ AND (
+            instr(lower(original_file_name), lower(?)) > 0
+            OR instr(lower(asset_id), lower(?)) > 0
+            OR instr(lower(COALESCE(target_asset_id, '')), lower(?)) > 0
+            OR instr(lower(CASE WHEN json_valid(manifest)
+                THEN json_extract(manifest, '$.files.photo.path') ELSE '' END), lower(?)) > 0
+        )"""
+        params.extend([search.strip()] * 4)
+    return where, params
+
+
+def list_problems(limit: int = 25, offset: int = 0, status: str = "", search: str = ""):
+    where, params = result_filter(status, search)
     with connect() as connection:
         return list(
             connection.execute(
@@ -146,15 +165,12 @@ def list_problems(limit: int = 25, offset: int = 0, status: str = ""):
         )
 
 
-def count(status: str = "") -> int:
+def count(status: str = "", search: str = "") -> int:
+    where, params = result_filter(status, search)
     with connect() as connection:
-        if status:
-            return connection.execute(
-                "SELECT COUNT(*) FROM photo_problems WHERE status=?",
-                (status,),
-            ).fetchone()[0]
         return connection.execute(
-            "SELECT COUNT(*) FROM photo_problems WHERE status!='clean'",
+            f"SELECT COUNT(*) FROM photo_problems WHERE {where}",
+            params,
         ).fetchone()[0]
 
 
